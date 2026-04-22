@@ -1,0 +1,829 @@
+openapi: 3.1.0
+info:
+  title: GOP 360° — Creación de Pozo Nuevo
+  description: >
+    API para RQF_GOP_01: Creación de Pozo Nuevo. Permite a operadoras registrar
+    pozos nuevos (continental/offshore) con generación automática de UWI fiscalizado.
+    Acción unilateral sin flujo de aprobación ANH.
+  version: 1.0.0
+  contact:
+    name: Arquitectura GOP 360°
+
+servers:
+  - url: https://api-dev.gop360.example.com/api/v1
+    description: Desarrollo
+  - url: https://api-stg.gop360.example.com/api/v1
+    description: Staging
+  - url: https://api.gop360.example.com/api/v1
+    description: Producción
+
+tags:
+  - name: Wells
+    description: CRUD y finalización de pozos nuevos
+  - name: UWI Preview
+    description: Previsualización de UWI fiscalizado
+
+security:
+  - bearerAuth: []
+
+paths:
+  /wells:
+    post:
+      operationId: createWell
+      tags: [Wells]
+      summary: Crear borrador de pozo nuevo
+      description: >
+        Crea un pozo en estado DRAFT. Calcula nombre compuesto y UWI server-side.
+        No requiere completitud (borrador). RN-15: ANH solo Estratigráfico.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WellCreateRequest'
+            examples:
+              developmentWell:
+                $ref: '#/components/examples/CreateDevelopmentWell'
+              sideTrackWell:
+                $ref: '#/components/examples/CreateSideTrackWell'
+              stratigraphicWell:
+                $ref: '#/components/examples/CreateStratigraphicWell'
+      responses:
+        '201':
+          description: Pozo creado como borrador
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellCreatedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      operationId: listWells
+      tags: [Wells]
+      summary: Listar pozos
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - $ref: '#/components/parameters/SortParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, CREATED]
+        - name: contractId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: wellName
+          in: query
+          schema:
+            type: string
+        - name: fiscalizedUwi
+          in: query
+          schema:
+            type: string
+        - name: classificationCode
+          in: query
+          schema:
+            $ref: '#/components/schemas/ClassificationCode'
+        - name: isLegacyWell
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Lista paginada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /wells/{id}:
+    parameters:
+      - $ref: '#/components/parameters/WellIdParam'
+
+    get:
+      operationId: getWell
+      tags: [Wells]
+      summary: Detalle de un pozo
+      responses:
+        '200':
+          description: Detalle completo
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      operationId: updateWell
+      tags: [Wells]
+      summary: Actualizar pozo (Borrador o Creado sin F101)
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WellCreateRequest'
+      responses:
+        '200':
+          description: Pozo actualizado
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellUpdatedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      operationId: deleteWell
+      tags: [Wells]
+      summary: Eliminar pozo (Borrador o Creado sin F101)
+      responses:
+        '204':
+          description: Pozo eliminado
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /wells/{id}/finalize:
+    parameters:
+      - $ref: '#/components/parameters/WellIdParam'
+    post:
+      operationId: finalizeWell
+      tags: [Wells]
+      summary: Finalizar registro (DRAFT → CREATED)
+      description: Valida todos los campos obligatorios, verifica unicidad de nombre/UWI.
+      responses:
+        '200':
+          description: Pozo finalizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellFinalizedResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /wells/{id}/parent-well-data:
+    parameters:
+      - $ref: '#/components/parameters/WellIdParam'
+    get:
+      operationId: getParentWellData
+      tags: [Wells]
+      summary: Datos del pozo padre para ST/PR/G
+      parameters:
+        - name: parentWellId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Datos del pozo padre
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParentWellDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /wells/preview-uwi:
+    post:
+      operationId: previewUwi
+      tags: [UWI Preview]
+      summary: Previsualizar UWI sin persistir
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreviewUwiRequest'
+      responses:
+        '200':
+          description: UWI calculado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreviewUwiResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    WellIdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSizeParam:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    SortParam:
+      name: sort
+      in: query
+      schema:
+        type: string
+        default: "createdAt:desc"
+
+  schemas:
+    WellStatus:
+      type: string
+      enum: [DRAFT, CREATED]
+
+    ClassificationCode:
+      type: string
+      enum: [EXPLORATORY, DEVELOPMENT, STRATIGRAPHIC]
+
+    SubClassificationCode:
+      type: string
+      enum: [A3, A2A, A2B, A2C, A1]
+      nullable: true
+
+    TrajectoryTypeCode:
+      type: string
+      enum: [ST, P, PR, ML, G, O]
+
+    WellCreateRequest:
+      type: object
+      properties:
+        contractId:
+          type: string
+          format: uuid
+        trajectoryTypeCode:
+          $ref: '#/components/schemas/TrajectoryTypeCode'
+        parentWellId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Requerido si trayectoria ∈ {ST, PR, G} (RN-03)
+        classificationCode:
+          $ref: '#/components/schemas/ClassificationCode'
+        subClassificationCode:
+          $ref: '#/components/schemas/SubClassificationCode'
+        denomination:
+          type: string
+          maxLength: 100
+          nullable: true
+          description: Parte textual del nombre. Null para ST/PR/G (auto-generado).
+        consecutive:
+          type: string
+          maxLength: 10
+          nullable: true
+          description: Parte numérica del nombre. Null para ST/PR/G.
+        useFieldNameAsPrefix:
+          type: boolean
+          nullable: true
+          description: RN-20 — Para Desarrollo, true si el nombre lleva el del campo.
+        fieldId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null si Estratigráfico (N/A) o A3 (CAMPO EXPLORATORIO auto).
+        angleTypeCode:
+          type: string
+          enum: [H, V, D]
+        objectiveCode:
+          type: string
+          enum: [PH, I, M, D, C, GT, O]
+        completionTypeCode:
+          type: string
+          enum: [CD, LC, LR, GP, CC, OH, O]
+        departmentDaneCode:
+          type: string
+          pattern: '^\d{2}$'
+          nullable: true
+          description: Requerido si Continental; opcional si Offshore (PA-02)
+        municipalityDaneCode:
+          type: string
+          pattern: '^\d{3}$'
+          nullable: true
+        clusterLocationId:
+          type: string
+          format: uuid
+
+    WellCreatedResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        wellName:
+          type: string
+        fiscalizedUwi:
+          type: string
+        status:
+          $ref: '#/components/schemas/WellStatus'
+        operatorId:
+          type: string
+          format: uuid
+        operatorName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+
+    WellUpdatedResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        wellName:
+          type: string
+        fiscalizedUwi:
+          type: string
+        status:
+          $ref: '#/components/schemas/WellStatus'
+        updatedAt:
+          type: string
+          format: date-time
+
+    WellFinalizedResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        wellName:
+          type: string
+        fiscalizedUwi:
+          type: string
+        status:
+          $ref: '#/components/schemas/WellStatus'
+        currentStateCode:
+          type: string
+        finalizedAt:
+          type: string
+          format: date-time
+
+    WellListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WellSummary'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    WellSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        wellName:
+          type: string
+        fiscalizedUwi:
+          type: string
+        status:
+          $ref: '#/components/schemas/WellStatus'
+        operatorName:
+          type: string
+        contractCode:
+          type: string
+        fieldName:
+          type: string
+          nullable: true
+        classificationCode:
+          type: string
+        departmentName:
+          type: string
+          nullable: true
+        municipalityName:
+          type: string
+          nullable: true
+        hasFiledForm101:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    WellDetailResponse:
+      type: object
+      description: Ver api-contract.md §4.3 para ejemplo completo.
+      properties:
+        id:
+          type: string
+          format: uuid
+        wellName:
+          type: string
+        fiscalizedUwi:
+          type: string
+        status:
+          $ref: '#/components/schemas/WellStatus'
+        isLegacyWell:
+          type: boolean
+        operatorId:
+          type: string
+          format: uuid
+        operatorName:
+          type: string
+        contract:
+          type: object
+        trajectoryTypeCode:
+          type: string
+        parentWellId:
+          type: string
+          format: uuid
+          nullable: true
+        parentWellName:
+          type: string
+          nullable: true
+        classificationCode:
+          type: string
+        subClassificationCode:
+          type: string
+          nullable: true
+        denomination:
+          type: string
+          nullable: true
+        consecutive:
+          type: string
+          nullable: true
+        fieldId:
+          type: string
+          format: uuid
+          nullable: true
+        fieldName:
+          type: string
+          nullable: true
+        locationType:
+          type: string
+        angleTypeCode:
+          type: string
+        objectiveCode:
+          type: string
+        completionTypeCode:
+          type: string
+        departmentDaneCode:
+          type: string
+          nullable: true
+        departmentName:
+          type: string
+          nullable: true
+        municipalityDaneCode:
+          type: string
+          nullable: true
+        municipalityName:
+          type: string
+          nullable: true
+        clusterLocationId:
+          type: string
+          format: uuid
+        clusterLocationName:
+          type: string
+        uwiComponents:
+          type: object
+        hasFiledForm101:
+          type: boolean
+        currentStateCode:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+
+    ParentWellDataResponse:
+      type: object
+      properties:
+        parentWellId:
+          type: string
+          format: uuid
+        parentWellName:
+          type: string
+        basinName:
+          type: string
+        locationType:
+          type: string
+        departmentDaneCode:
+          type: string
+        departmentName:
+          type: string
+        municipalityDaneCode:
+          type: string
+        municipalityName:
+          type: string
+        clusterLocationId:
+          type: string
+          format: uuid
+        clusterLocationName:
+          type: string
+        angleTypeCode:
+          type: string
+        objectiveCode:
+          type: string
+        completionTypeCode:
+          type: string
+        hasApprovedPluggingProgram:
+          type: boolean
+          description: RN-09 — true si F108/109 aprobada en pozo padre
+        pluggingProgramWarning:
+          type: string
+          nullable: true
+          description: Texto de warning si hasApprovedPluggingProgram=false y trayectoria=ST
+
+    PreviewUwiRequest:
+      type: object
+      required: [departmentDaneCode, municipalityDaneCode, denomination, consecutive, clusterLocationName, angleTypeCode, trajectoryTypeCode, objectiveCode, completionTypeCode]
+      properties:
+        departmentDaneCode:
+          type: string
+        municipalityDaneCode:
+          type: string
+        denomination:
+          type: string
+        consecutive:
+          type: string
+        clusterLocationName:
+          type: string
+        angleTypeCode:
+          type: string
+        trajectoryTypeCode:
+          type: string
+        objectiveCode:
+          type: string
+        completionTypeCode:
+          type: string
+        classificationCode:
+          type: string
+          description: Para determinar prefijo ANH en estratigráficos
+
+    PreviewUwiResponse:
+      type: object
+      properties:
+        fiscalizedUwi:
+          type: string
+        wellName:
+          type: string
+        components:
+          type: object
+          properties:
+            departmentCode:
+              type: string
+            municipalityCode:
+              type: string
+            wellNameSigle:
+              type: string
+            wellNumber:
+              type: string
+            clusterCode:
+              type: string
+            angleCode:
+              type: string
+            trajectoryCode:
+              type: string
+            objectiveCode:
+              type: string
+            completionCode:
+              type: string
+        isUnique:
+          type: boolean
+        conflictingUwi:
+          type: string
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      required: [code, message, traceId]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              rule:
+                type: string
+              message:
+                type: string
+          nullable: true
+        traceId:
+          type: string
+          format: uuid
+
+  responses:
+    BadRequest:
+      description: Payload malformado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Token ausente/inválido
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Sin permiso
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Conflicto (duplicado, estado, concurrencia)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Regla de negocio violada
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Rate limit excedido
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Error interno
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  examples:
+    CreateDevelopmentWell:
+      summary: Pozo de desarrollo continental
+      value:
+        contractId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        trajectoryTypeCode: "O"
+        parentWellId: null
+        classificationCode: "DEVELOPMENT"
+        subClassificationCode: null
+        denomination: "RUBIALES"
+        consecutive: "157"
+        useFieldNameAsPrefix: false
+        fieldId: "9fa85f64-5717-4562-b3fc-2c963f66afa6"
+        angleTypeCode: "V"
+        objectiveCode: "PH"
+        completionTypeCode: "CC"
+        departmentDaneCode: "50"
+        municipalityDaneCode: "568"
+        clusterLocationId: "1fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+    CreateSideTrackWell:
+      summary: Side Track de pozo existente
+      value:
+        contractId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        trajectoryTypeCode: "ST"
+        parentWellId: "bfa85f64-5717-4562-b3fc-2c963f66afa6"
+        classificationCode: "DEVELOPMENT"
+        subClassificationCode: null
+        denomination: null
+        consecutive: null
+        fieldId: "9fa85f64-5717-4562-b3fc-2c963f66afa6"
+        angleTypeCode: "V"
+        objectiveCode: "PH"
+        completionTypeCode: "CC"
+        departmentDaneCode: null
+        municipalityDaneCode: null
+        clusterLocationId: null
+
+    CreateStratigraphicWell:
+      summary: Pozo estratigráfico ANH
+      value:
+        contractId: "4fa85f64-5717-4562-b3fc-2c963f66afa6"
+        trajectoryTypeCode: "O"
+        parentWellId: null
+        classificationCode: "STRATIGRAPHIC"
+        subClassificationCode: null
+        denomination: "MORICHE"
+        consecutive: "1"
+        fieldId: null
+        angleTypeCode: "V"
+        objectiveCode: "PH"
+        completionTypeCode: "OH"
+        departmentDaneCode: "50"
+        municipalityDaneCode: "568"
+        clusterLocationId: "1fa85f64-5717-4562-b3fc-2c963f66afa6"
