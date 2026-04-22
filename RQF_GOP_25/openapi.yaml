@@ -1,0 +1,1631 @@
+openapi: 3.1.0
+info:
+  title: GOP 360° — Registro de Pozo Antiguo / Perforado
+  description: >
+    API para la funcionalidad RQF_GOP_25: Registro de Pozo Antiguo/Perforado.
+    Permite a operadoras registrar pozos ya perforados con información técnica,
+    de localización, terminación y pruebas, con flujo de aprobación ANH.
+  version: 1.0.0
+  contact:
+    name: Arquitectura GOP 360°
+    email: arquitectura@example.com
+
+servers:
+  - url: https://api-dev.gop360.example.com/api/v1
+    description: Desarrollo
+  - url: https://api-stg.gop360.example.com/api/v1
+    description: Staging
+  - url: https://api.gop360.example.com/api/v1
+    description: Producción
+
+tags:
+  - name: Legacy Well Registrations
+    description: CRUD y flujo de aprobación para registros de pozo antiguo
+  - name: Log Attachments
+    description: Gestión de adjuntos de registros eléctricos
+  - name: UWI Preview
+    description: Previsualización de UWI fiscalizado
+
+security:
+  - bearerAuth: []
+
+paths:
+  /legacy-well-registrations:
+    post:
+      operationId: createLegacyWellRegistration
+      tags: [Legacy Well Registrations]
+      summary: Crear borrador de registro de pozo antiguo
+      description: >
+        Crea un nuevo registro en estado DRAFT. Genera UWI fiscalizado automáticamente.
+        No requiere completitud de campos obligatorios (es borrador).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LegacyWellRegistrationRequest'
+            examples:
+              continentalWell:
+                $ref: '#/components/examples/CreateContinentalWellRequest'
+      responses:
+        '201':
+          description: Registro creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegacyWellRegistrationCreatedResponse'
+              examples:
+                success:
+                  $ref: '#/components/examples/CreateWellResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      operationId: listLegacyWellRegistrations
+      tags: [Legacy Well Registrations]
+      summary: Listar registros de pozo antiguo
+      description: >
+        Lista registros con paginación, ordenamiento y filtros.
+        Filtrado automático por tenant (operadora del usuario) salvo roles ANH.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - $ref: '#/components/parameters/SortParam'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/RegistrationStatus'
+        - name: contractId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: wellName
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+          description: Búsqueda parcial por nombre de pozo
+        - name: fiscalizedUwi
+          in: query
+          schema:
+            type: string
+            maxLength: 80
+          description: Búsqueda parcial por UWI
+        - name: createdFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: createdTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Lista paginada de registros
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegacyWellRegistrationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /legacy-well-registrations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/RegistrationIdParam'
+
+    get:
+      operationId: getLegacyWellRegistration
+      tags: [Legacy Well Registrations]
+      summary: Obtener detalle de un registro
+      description: Retorna registro completo con secciones, tablas dinámicas, campos calculados, observaciones y adjuntos.
+      responses:
+        '200':
+          description: Detalle del registro
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegacyWellRegistrationDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      operationId: updateLegacyWellRegistration
+      tags: [Legacy Well Registrations]
+      summary: Actualizar registro (Borrador/Devuelto)
+      description: >
+        Actualiza un registro. Solo permitido en estados DRAFT o RETURNED.
+        Requiere header If-Match para control de concurrencia optimista.
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+          description: ETag del registro para control de concurrencia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LegacyWellRegistrationRequest'
+      responses:
+        '200':
+          description: Registro actualizado
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegacyWellRegistrationUpdatedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      operationId: deleteLegacyWellRegistration
+      tags: [Legacy Well Registrations]
+      summary: Eliminar registro (Borrador/Devuelto)
+      description: >
+        Elimina un registro. Solo permitido en estados DRAFT o RETURNED.
+        Bloqueado en SUBMITTED, UNDER_REVIEW y APPROVED (RN-28).
+      responses:
+        '204':
+          description: Registro eliminado
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /legacy-well-registrations/{id}/submit:
+    parameters:
+      - $ref: '#/components/parameters/RegistrationIdParam'
+    post:
+      operationId: submitLegacyWellRegistration
+      tags: [Legacy Well Registrations]
+      summary: Enviar a aprobación ANH
+      description: >
+        Valida completitud de campos obligatorios, registra firma del operador,
+        transiciona estado a SUBMITTED. Solo desde DRAFT o RETURNED.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitRequest'
+            examples:
+              submit:
+                value:
+                  operatorEngineerName: "Carlos Pérez"
+                  professionalLicenseNumber: "PET-12345"
+      responses:
+        '200':
+          description: Registro enviado a aprobación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /legacy-well-registrations/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/RegistrationIdParam'
+    post:
+      operationId: approveLegacyWellRegistration
+      tags: [Legacy Well Registrations]
+      summary: Aprobar registro (ANH)
+      description: >
+        Ingeniero ANH aprueba el registro. Registra firma ANH, crea el Well en
+        el dominio con estado FSM mapeado, genera PDF oficial, notifica operadora.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveRequest'
+            examples:
+              approve:
+                value:
+                  anhEngineerName: "María González"
+                  professionalLicenseNumber: "PET-67890"
+      responses:
+        '200':
+          description: Registro aprobado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApproveResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /legacy-well-registrations/{id}/return:
+    parameters:
+      - $ref: '#/components/parameters/RegistrationIdParam'
+    post:
+      operationId: returnLegacyWellRegistration
+      tags: [Legacy Well Registrations]
+      summary: Devolver con observaciones (ANH)
+      description: Ingeniero ANH devuelve el registro a la operadora con observaciones.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReturnRequest'
+            examples:
+              return:
+                value:
+                  observations: "Las coordenadas de fondo no son consistentes con la profundidad total declarada."
+      responses:
+        '200':
+          description: Registro devuelto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /legacy-well-registrations/{id}/pdf:
+    parameters:
+      - $ref: '#/components/parameters/RegistrationIdParam'
+    get:
+      operationId: downloadLegacyWellRegistrationPdf
+      tags: [Legacy Well Registrations]
+      summary: Descargar PDF del registro
+      description: >
+        PDF oficial si APPROVED, preview sin firmas ANH en otros estados.
+        Solo incluye secciones diligenciadas (RN-30).
+      responses:
+        '200':
+          description: Archivo PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                examples:
+                  - 'attachment; filename="FOPA-RUBI-0425-2026-001.pdf"'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /legacy-well-registrations/{id}/log-attachments:
+    parameters:
+      - $ref: '#/components/parameters/RegistrationIdParam'
+
+    post:
+      operationId: uploadLogAttachment
+      tags: [Log Attachments]
+      summary: Subir adjunto de registro eléctrico
+      description: Asocia un archivo al registro corrido indicado por logSequenceNumber.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, logSequenceNumber]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Archivo del registro eléctrico
+                logSequenceNumber:
+                  type: integer
+                  minimum: 1
+                  description: Número de secuencia del registro corrido asociado
+      responses:
+        '201':
+          description: Adjunto subido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogAttachmentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: Archivo excede tamaño máximo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /legacy-well-registrations/{id}/log-attachments/{attachmentId}:
+    parameters:
+      - $ref: '#/components/parameters/RegistrationIdParam'
+      - name: attachmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: downloadLogAttachment
+      tags: [Log Attachments]
+      summary: Descargar adjunto de registro eléctrico
+      responses:
+        '200':
+          description: Contenido binario del archivo
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      operationId: deleteLogAttachment
+      tags: [Log Attachments]
+      summary: Eliminar adjunto
+      description: Solo permitido si el registro está en estado DRAFT o RETURNED.
+      responses:
+        '204':
+          description: Adjunto eliminado
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /legacy-well-registrations/preview-uwi:
+    post:
+      operationId: previewUwi
+      tags: [UWI Preview]
+      summary: Previsualizar UWI fiscalizado
+      description: Calcula el UWI sin persistir. Permite verificar unicidad antes de guardar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreviewUwiRequest'
+      responses:
+        '200':
+          description: UWI calculado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreviewUwiResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT emitido por gop.identity
+
+  parameters:
+    RegistrationIdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: ID del registro de pozo antiguo
+
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PageSizeParam:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    SortParam:
+      name: sort
+      in: query
+      schema:
+        type: string
+        default: "createdAt:desc"
+      description: "Formato: campo:asc|desc"
+
+  schemas:
+    RegistrationStatus:
+      type: string
+      enum: [DRAFT, SUBMITTED, UNDER_REVIEW, APPROVED, RETURNED]
+
+    LegacyWellRegistrationRequest:
+      type: object
+      description: Payload completo para crear o actualizar un registro de pozo antiguo
+      properties:
+        currentContract:
+          $ref: '#/components/schemas/CurrentContractInput'
+        historicalContract:
+          $ref: '#/components/schemas/HistoricalContractInput'
+        technicalDetails:
+          $ref: '#/components/schemas/TechnicalDetailsInput'
+        geographicLocation:
+          $ref: '#/components/schemas/GeographicLocationInput'
+        sgcUwi:
+          type: string
+          maxLength: 80
+          description: UWI del SGC seleccionado o ingresado
+        initialOriginCoordinates:
+          $ref: '#/components/schemas/InitialOriginCoordinatesInput'
+        nationalOriginCoordinates:
+          $ref: '#/components/schemas/ProjectedCoordinatesInput'
+        geographicCoordinates:
+          $ref: '#/components/schemas/GeographicCoordinatesInput'
+        physicalInfo:
+          $ref: '#/components/schemas/PhysicalInfoInput'
+        completionIntervals:
+          $ref: '#/components/schemas/CompletionIntervalsInput'
+        productionTest:
+          $ref: '#/components/schemas/ProductionTestInput'
+        injectivityTest:
+          $ref: '#/components/schemas/InjectivityTestInput'
+        monitoringTest:
+          $ref: '#/components/schemas/MonitoringTestInput'
+        formationsFound:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormationFoundInput'
+          maxItems: 50
+        reservoirFormationName:
+          type: string
+          maxLength: 200
+        casingsPlaced:
+          type: array
+          items:
+            $ref: '#/components/schemas/CasingPlacedInput'
+          maxItems: 20
+        logsRun:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogRunInput'
+          maxItems: 30
+        freshwaterSands:
+          type: array
+          items:
+            $ref: '#/components/schemas/FreshwaterSandInput'
+          maxItems: 20
+
+    CurrentContractInput:
+      type: object
+      required: [contractId]
+      properties:
+        contractId:
+          type: string
+          format: uuid
+
+    HistoricalContractInput:
+      type: object
+      required: [initialContractName, initialContractTypeCode]
+      properties:
+        initialOperatorId:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID del operador inicial. Null cuando se selecciona OTRO.
+        initialOperatorFreeText:
+          type: string
+          maxLength: 200
+          nullable: true
+          description: Nombre libre del operador cuando se elige OTRO (RN-04).
+        initialContractName:
+          type: string
+          maxLength: 100
+        initialContractTypeCode:
+          type: string
+          enum: [CONCESSION, ASSOCIATION, EP, EE, TEA, EXPLOITATION_AGREEMENT]
+
+    TechnicalDetailsInput:
+      type: object
+      required: [trajectoryTypeCode, hasForm103, wellName, angleTypeCode, form103ObjectiveCode, currentWellStateCode, currentObjectiveCode, completionTypeCode]
+      properties:
+        trajectoryTypeCode:
+          type: string
+          enum: [ST, P, PR, ML, G, O]
+        parentWellId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Requerido si trajectoryTypeCode ∈ {ST, PR, G} (RN-05)
+        hasForm103:
+          type: boolean
+          description: "¿Cuenta con Forma 103? (RN-06)"
+        wellName:
+          type: string
+          maxLength: 100
+          description: Nombre del pozo (texto libre si hasForm103=true, ID AVM si false)
+        avmWellId:
+          type: string
+          maxLength: 50
+          nullable: true
+          description: ID del pozo en AVM (cuando hasForm103=false)
+        laheeClassificationCode:
+          type: string
+          enum: [B3, B2A, B2B, B2C, B1, C3, C2A, C2B, C2C, C1]
+          nullable: true
+          description: Exclusión mutua con finalClassificationCode (RN-07)
+        finalClassificationCode:
+          type: string
+          enum: [STRATIGRAPHIC, DEVELOPMENT]
+          nullable: true
+          description: Exclusión mutua con laheeClassificationCode (RN-07)
+        fieldId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Campo petrolero. Null si Estratigráfico (RN-08) o Área Disponible.
+        fieldNameFreeText:
+          type: string
+          maxLength: 200
+          nullable: true
+          description: Nombre de campo en texto libre (solo si contrato = Área Disponible)
+        angleTypeCode:
+          type: string
+          enum: [H, V, D]
+        form103ObjectiveCode:
+          type: string
+          enum: [PH, I, M, D, EST]
+          description: Objetivo según Forma 103 (condiciona sección de pruebas)
+        currentWellStateCode:
+          type: string
+          enum: [ACTIVE, INACTIVE, TEMPORARILY_SUSPENDED, PERMANENTLY_ABANDONED, TEMPORARILY_ABANDONED, SUSPENSION_TERMINATION_WITH_PLAN, ABANDONMENT_TERMINATION_WITH_PLAN]
+        currentObjectiveCode:
+          type: string
+          enum: [PH, I, M, D, EST]
+          description: Objetivo actual del pozo
+        completionTypeCode:
+          type: string
+          enum: [CD, LC, LR, GP, CC, OH, O]
+
+    GeographicLocationInput:
+      type: object
+      properties:
+        departmentDaneCode:
+          type: string
+          pattern: '^\d{2}$'
+          nullable: true
+          description: Obligatorio para Continental, opcional para Offshore (RN-32)
+        municipalityDaneCode:
+          type: string
+          pattern: '^\d{3}$'
+          nullable: true
+          description: Obligatorio para Continental, opcional para Offshore (RN-32)
+        clusterLocationId:
+          type: string
+          format: uuid
+
+    InitialOriginCoordinatesInput:
+      type: object
+      required: [datumType, originCode, surfaceNorthing, surfaceEasting, bottomNorthing, bottomEasting]
+      properties:
+        datumType:
+          type: string
+          enum: [MAGNA_SIRGAS, BOGOTA]
+          description: Exclusión mutua entre datums (RN-13)
+        originCode:
+          type: string
+          maxLength: 50
+          description: Código del origen según datum seleccionado
+        surfaceNorthing:
+          type: number
+          format: double
+          description: Norte (Y) superficie en metros, hasta 2 decimales
+        surfaceEasting:
+          type: number
+          format: double
+          description: Este (X) superficie en metros, hasta 2 decimales
+        bottomNorthing:
+          type: number
+          format: double
+        bottomEasting:
+          type: number
+          format: double
+
+    ProjectedCoordinatesInput:
+      type: object
+      required: [surfaceNorthing, surfaceEasting, bottomNorthing, bottomEasting]
+      properties:
+        surfaceNorthing:
+          type: number
+          format: double
+        surfaceEasting:
+          type: number
+          format: double
+        bottomNorthing:
+          type: number
+          format: double
+        bottomEasting:
+          type: number
+          format: double
+
+    GeographicCoordinatesInput:
+      type: object
+      required: [surfaceLatitude, surfaceLongitude, bottomLatitude, bottomLongitude]
+      properties:
+        surfaceLatitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          description: "Formato ±gg.gggggg (RN-14)"
+        surfaceLongitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 0
+          description: "Negativo (W) para Colombia (RN-14)"
+        bottomLatitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        bottomLongitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 0
+
+    PhysicalInfoInput:
+      type: object
+      required: [trapTypeCode, rotaryTableElevationFeet, groundElevationFeet, totalDepthMdFeet, totalDepthTvdFeet, totalDepthTvdssFeet, drillingStartDate, drillingEndDate, completionDate, observations]
+      properties:
+        trapTypeCode:
+          type: string
+          enum: [STRUCTURAL, STRATIGRAPHIC, MIXED]
+        rotaryTableElevationFeet:
+          type: number
+          format: double
+        groundElevationFeet:
+          type: number
+          format: double
+          description: Auto 0 para offshore (RN-15)
+        waterDepthMeters:
+          type: number
+          format: double
+          nullable: true
+          description: Solo offshore (RN-09/RN-16)
+        coastDistanceKm:
+          type: number
+          format: double
+          nullable: true
+          description: Solo offshore, hasta 1 decimal (RN-09/RN-16)
+        totalDepthMdFeet:
+          type: number
+          format: double
+        totalDepthTvdFeet:
+          type: number
+          format: double
+        totalDepthTvdssFeet:
+          type: number
+          format: double
+        drillingStartDate:
+          type: string
+          format: date
+        drillingEndDate:
+          type: string
+          format: date
+        completionDate:
+          type: string
+          format: date
+        form103ApprovalDate:
+          type: string
+          format: date
+          nullable: true
+          description: Obligatorio solo si hasForm103=true
+        observations:
+          type: string
+          maxLength: 300
+
+    CompletionIntervalsInput:
+      type: object
+      required: [completionDescription, intervals]
+      properties:
+        completionDescription:
+          type: string
+          enum: [PERFORATION, OPEN_HOLE, SLOTTED_LINER, GRAVEL_PACK, OTHER]
+        completionDescriptionOther:
+          type: string
+          maxLength: 100
+          nullable: true
+          description: Requerido si completionDescription=OTHER
+        intervals:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/CompletionIntervalInput'
+
+    CompletionIntervalInput:
+      type: object
+      required: [fromFeet, toFeet, status]
+      properties:
+        fromFeet:
+          type: number
+          format: double
+        toFeet:
+          type: number
+          format: double
+        shotsPerFoot:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Requerido solo si completionDescription=PERFORATION (RN-18)
+        status:
+          type: string
+          enum: [OPEN, ISOLATED]
+
+    ProductionTestInput:
+      type: object
+      nullable: true
+      description: Requerido si form103ObjectiveCode=PH (RN-10)
+      required: [testDate, oilRateBblPerDay, gasRateKscfPerDay, waterRateBblPerDay, wellheadPressurePsia, apiGravity, gorKscfPerBbl, bswPercent]
+      properties:
+        testDate:
+          type: string
+          format: date
+        oilRateBblPerDay:
+          type: number
+          format: double
+        gasRateKscfPerDay:
+          type: number
+          format: double
+        waterRateBblPerDay:
+          type: number
+          format: double
+        wellheadPressurePsia:
+          type: number
+          format: double
+        apiGravity:
+          type: number
+          format: double
+        gorKscfPerBbl:
+          type: number
+          format: double
+        bswPercent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+
+    InjectivityTestInput:
+      type: object
+      nullable: true
+      description: Requerido si form103ObjectiveCode ∈ {I, D} (RN-10 + S-04)
+      required: [testDate, injectedVolume, fractureGradient, maxInjectionRate]
+      properties:
+        testDate:
+          type: string
+          format: date
+        injectedVolume:
+          type: number
+          format: double
+          description: Volumen inyectado (Bbls o Kpc)
+        fractureGradient:
+          type: string
+          maxLength: 100
+          description: Gradiente de Fractura (psi/pie) — alfanumérico
+        maxInjectionRate:
+          type: integer
+          description: Tasa de Inyección Máxima Autorizada (Bls/día)
+
+    MonitoringTestInput:
+      type: object
+      nullable: true
+      description: Requerido si form103ObjectiveCode=M (RN-10)
+      required: [testDate, monitorApprovalTime, monitoredVariable]
+      properties:
+        testDate:
+          type: string
+          format: date
+        monitorApprovalTime:
+          type: integer
+          description: Tiempo máximo de monitoreo (entero)
+        monitoredVariable:
+          type: string
+          enum: [PRESSURE, TEMPERATURE, BOTH]
+
+    FormationFoundInput:
+      type: object
+      required: [formationName, topMdFeet, topTvdFeet, topTvdssFeet]
+      properties:
+        formationName:
+          type: string
+          maxLength: 200
+        topMdFeet:
+          type: number
+          format: double
+          description: Se aplica redondeo RN-23
+        topTvdFeet:
+          type: number
+          format: double
+          description: Se aplica redondeo RN-23
+        topTvdssFeet:
+          type: number
+          format: double
+
+    CasingPlacedInput:
+      type: object
+      required: [holeDiameterCode, casingSizeCode, gradeCode, weightLbsPerFtCode, shoeDepthFeet, cementTopFeet]
+      properties:
+        holeDiameterCode:
+          type: string
+          maxLength: 20
+        casingSizeCode:
+          type: string
+          maxLength: 20
+        gradeCode:
+          type: string
+          maxLength: 20
+        weightLbsPerFtCode:
+          type: string
+          maxLength: 20
+        shoeDepthFeet:
+          type: number
+          format: double
+        cementTopFeet:
+          type: number
+          format: double
+
+    LogRunInput:
+      type: object
+      required: [logTypeCode, initialDepthFeet, finalDepthFeet, scale]
+      properties:
+        logTypeCode:
+          type: string
+          maxLength: 50
+        initialDepthFeet:
+          type: number
+          format: double
+        finalDepthFeet:
+          type: number
+          format: double
+        scale:
+          type: number
+          format: double
+
+    FreshwaterSandInput:
+      type: object
+      required: [number, topFeet, baseFeet]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+        topFeet:
+          type: number
+          format: double
+        baseFeet:
+          type: number
+          format: double
+
+    SubmitRequest:
+      type: object
+      required: [operatorEngineerName, professionalLicenseNumber]
+      properties:
+        operatorEngineerName:
+          type: string
+          maxLength: 200
+        professionalLicenseNumber:
+          type: string
+          maxLength: 50
+
+    ApproveRequest:
+      type: object
+      required: [anhEngineerName, professionalLicenseNumber]
+      properties:
+        anhEngineerName:
+          type: string
+          maxLength: 200
+        professionalLicenseNumber:
+          type: string
+          maxLength: 50
+
+    ReturnRequest:
+      type: object
+      required: [observations]
+      properties:
+        observations:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    PreviewUwiRequest:
+      type: object
+      required: [departmentDaneCode, municipalityDaneCode, wellName, wellNumber, clusterLocationName, angleTypeCode, trajectoryTypeCode, objectiveCode, completionTypeCode]
+      properties:
+        departmentDaneCode:
+          type: string
+          pattern: '^\d{2}$'
+        municipalityDaneCode:
+          type: string
+          pattern: '^\d{3}$'
+        wellName:
+          type: string
+          maxLength: 100
+        wellNumber:
+          type: string
+          pattern: '^\d{1,4}$'
+        clusterLocationName:
+          type: string
+          maxLength: 100
+        angleTypeCode:
+          type: string
+          enum: [H, V, D]
+        trajectoryTypeCode:
+          type: string
+          enum: [ST, P, PR, ML, G, O]
+        objectiveCode:
+          type: string
+          enum: [PH, I, M, D, C, GT, O]
+        completionTypeCode:
+          type: string
+          enum: [CD, LC, LR, GP, CC, OH, O]
+
+    # ─── Response Schemas ──────────────────────────────────
+
+    LegacyWellRegistrationCreatedResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        consecutiveNumber:
+          type: string
+        status:
+          $ref: '#/components/schemas/RegistrationStatus'
+        fiscalizedUwi:
+          type: string
+        operatorId:
+          type: string
+          format: uuid
+        operatorName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+
+    LegacyWellRegistrationUpdatedResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/RegistrationStatus'
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+
+    LegacyWellRegistrationListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LegacyWellRegistrationSummary'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    LegacyWellRegistrationSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        consecutiveNumber:
+          type: string
+        status:
+          $ref: '#/components/schemas/RegistrationStatus'
+        wellName:
+          type: string
+        fiscalizedUwi:
+          type: string
+        contractCode:
+          type: string
+        operatorName:
+          type: string
+        fieldName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+
+    LegacyWellRegistrationDetailResponse:
+      type: object
+      description: >
+        Respuesta completa del registro. Incluye todos los campos del request
+        más campos calculados, nombres resueltos, historial de observaciones
+        y metadatos de auditoría. Ver api-contract.md §4.3 para ejemplo completo.
+      properties:
+        id:
+          type: string
+          format: uuid
+        consecutiveNumber:
+          type: string
+        status:
+          $ref: '#/components/schemas/RegistrationStatus'
+        fiscalizedUwi:
+          type: string
+        operatorId:
+          type: string
+          format: uuid
+        operatorName:
+          type: string
+        currentContract:
+          type: object
+          description: Contrato actual con nombres resueltos
+        historicalContract:
+          type: object
+          description: Contrato histórico con nombres resueltos
+        technicalDetails:
+          type: object
+          description: Detalles técnicos con nombres de catálogo resueltos
+        geographicLocation:
+          type: object
+          description: Ubicación con nombres de departamento/municipio resueltos
+        sgcUwi:
+          type: string
+        initialOriginCoordinates:
+          type: object
+        nationalOriginCoordinates:
+          type: object
+        geographicCoordinates:
+          type: object
+        physicalInfo:
+          type: object
+        completionIntervals:
+          type: object
+          description: Incluye thicknessFeet calculado por intervalo y totalOpenFeet
+        productionTest:
+          $ref: '#/components/schemas/ProductionTestInput'
+        injectivityTest:
+          $ref: '#/components/schemas/InjectivityTestInput'
+        monitoringTest:
+          $ref: '#/components/schemas/MonitoringTestInput'
+        formationsFound:
+          type: array
+          items:
+            type: object
+            description: Incluye baseMd/Tvd/Tvdss calculados y thicknessMdFeet
+        reservoirFormationName:
+          type: string
+        casingsPlaced:
+          type: array
+          items:
+            $ref: '#/components/schemas/CasingPlacedInput'
+        logsRun:
+          type: array
+          items:
+            type: object
+            description: Incluye attachmentId y attachmentFileName si adjuntado
+        freshwaterSands:
+          type: array
+          items:
+            $ref: '#/components/schemas/FreshwaterSandInput'
+        signatures:
+          type: object
+          properties:
+            operatorSignature:
+              type: object
+              properties:
+                engineerName:
+                  type: string
+                  nullable: true
+                professionalLicenseNumber:
+                  type: string
+                  nullable: true
+                submittedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+            anhSignature:
+              type: object
+              properties:
+                engineerName:
+                  type: string
+                  nullable: true
+                professionalLicenseNumber:
+                  type: string
+                  nullable: true
+                approvedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+        observations:
+          type: array
+          items:
+            type: object
+            properties:
+              text:
+                type: string
+              createdBy:
+                type: string
+              createdAt:
+                type: string
+                format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+
+    SubmitResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/RegistrationStatus'
+        submittedAt:
+          type: string
+          format: date-time
+        fiscalizedUwi:
+          type: string
+
+    ApproveResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/RegistrationStatus'
+        approvedAt:
+          type: string
+          format: date-time
+        wellId:
+          type: string
+          format: uuid
+          description: ID del Well creado en el dominio
+        fiscalizedUwi:
+          type: string
+        pdfUrl:
+          type: string
+          format: uri
+
+    ReturnResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/RegistrationStatus'
+        returnedAt:
+          type: string
+          format: date-time
+        returnedBy:
+          type: string
+
+    PreviewUwiResponse:
+      type: object
+      properties:
+        fiscalizedUwi:
+          type: string
+        components:
+          type: object
+          properties:
+            departmentCode:
+              type: string
+            municipalityCode:
+              type: string
+            wellNameSigle:
+              type: string
+            wellNumber:
+              type: string
+            clusterCode:
+              type: string
+            angleCode:
+              type: string
+            trajectoryCode:
+              type: string
+            objectiveCode:
+              type: string
+            completionCode:
+              type: string
+        isUnique:
+          type: boolean
+        conflictingUwi:
+          type: string
+          nullable: true
+
+    LogAttachmentResponse:
+      type: object
+      properties:
+        attachmentId:
+          type: string
+          format: uuid
+        fileName:
+          type: string
+        sizeBytes:
+          type: integer
+        uploadedAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required: [code, message, traceId]
+      properties:
+        code:
+          type: string
+          description: Código de error estandarizado
+        message:
+          type: string
+          description: Mensaje legible para el desarrollador
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              rule:
+                type: string
+              message:
+                type: string
+          nullable: true
+        traceId:
+          type: string
+          format: uuid
+
+  responses:
+    BadRequest:
+      description: Payload malformado o tipos inválidos
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            validationError:
+              value:
+                code: VALIDATION_ERROR
+                message: "El campo 'wellName' excede el máximo de 100 caracteres."
+                details:
+                  - field: technicalDetails.wellName
+                    rule: maxLength
+                    message: "Máximo 100 caracteres."
+                traceId: "00000000-0000-0000-0000-000000000099"
+
+    Unauthorized:
+      description: Token ausente, expirado o inválido
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unauthorized:
+              value:
+                code: UNAUTHORIZED
+                message: "Token de autenticación ausente o inválido."
+                traceId: "00000000-0000-0000-0000-000000000099"
+
+    Forbidden:
+      description: Rol sin permiso para la operación solicitada
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            forbidden:
+              value:
+                code: FORBIDDEN
+                message: "No tiene permisos para realizar esta operación."
+                traceId: "00000000-0000-0000-0000-000000000099"
+
+    NotFound:
+      description: Recurso no encontrado o fuera del alcance del tenant
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            notFound:
+              value:
+                code: NOT_FOUND
+                message: "Registro no encontrado."
+                traceId: "00000000-0000-0000-0000-000000000099"
+
+    Conflict:
+      description: Conflicto de estado, duplicado o concurrencia
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            stateConflict:
+              value:
+                code: INVALID_STATE_TRANSITION
+                message: "El registro en estado SUBMITTED no permite esta operación."
+                traceId: "00000000-0000-0000-0000-000000000099"
+
+    UnprocessableEntity:
+      description: Violación de regla de negocio
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            businessRule:
+              value:
+                code: BUSINESS_RULE_VIOLATION
+                message: "Exclusión mutua: no puede tener Lahee y Clasificación Final simultáneamente."
+                details:
+                  - field: technicalDetails.laheeClassificationCode
+                    rule: RN-07
+                    message: "Solo una clasificación permitida."
+                traceId: "00000000-0000-0000-0000-000000000099"
+
+    TooManyRequests:
+      description: Rate limit excedido
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Segundos hasta poder reintentar
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalServerError:
+      description: Error interno del servidor
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            internal:
+              value:
+                code: INTERNAL_ERROR
+                message: "Error interno del servidor."
+                traceId: "00000000-0000-0000-0000-000000000099"
+
+  examples:
+    CreateContinentalWellRequest:
+      summary: Registro de pozo continental con producción
+      value:
+        currentContract:
+          contractId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        historicalContract:
+          initialOperatorId: "7fa85f64-5717-4562-b3fc-2c963f66afa6"
+          initialOperatorFreeText: null
+          initialContractName: "Contrato Asociación Rubiales"
+          initialContractTypeCode: "ASSOCIATION"
+        technicalDetails:
+          trajectoryTypeCode: "O"
+          parentWellId: null
+          hasForm103: true
+          wellName: "RUBIALES 157"
+          avmWellId: null
+          laheeClassificationCode: "B3"
+          finalClassificationCode: null
+          fieldId: "9fa85f64-5717-4562-b3fc-2c963f66afa6"
+          fieldNameFreeText: null
+          angleTypeCode: "V"
+          form103ObjectiveCode: "PH"
+          currentWellStateCode: "ACTIVE"
+          currentObjectiveCode: "PH"
+          completionTypeCode: "CC"
+        geographicLocation:
+          departmentDaneCode: "50"
+          municipalityDaneCode: "568"
+          clusterLocationId: "1fa85f64-5717-4562-b3fc-2c963f66afa6"
+        sgcUwi: "SGC-RUB-157-2008"
+        geographicCoordinates:
+          surfaceLatitude: 3.850000
+          surfaceLongitude: -73.750000
+          bottomLatitude: 3.850001
+          bottomLongitude: -73.750001
+        physicalInfo:
+          trapTypeCode: "STRUCTURAL"
+          rotaryTableElevationFeet: 550.00
+          groundElevationFeet: 540.00
+          waterDepthMeters: null
+          coastDistanceKm: null
+          totalDepthMdFeet: 8500.00
+          totalDepthTvdFeet: 8350.00
+          totalDepthTvdssFeet: 7810.00
+          drillingStartDate: "2008-03-15"
+          drillingEndDate: "2008-06-20"
+          completionDate: "2008-07-15"
+          form103ApprovalDate: "2008-08-01"
+          observations: "Pozo completado con producción estable desde 2008."
+        completionIntervals:
+          completionDescription: "PERFORATION"
+          completionDescriptionOther: null
+          intervals:
+            - fromFeet: 7800.00
+              toFeet: 7825.00
+              shotsPerFoot: 10
+              status: "OPEN"
+        productionTest:
+          testDate: "2008-07-20"
+          oilRateBblPerDay: 1250.50
+          gasRateKscfPerDay: 3200.00
+          waterRateBblPerDay: 120.00
+          wellheadPressurePsia: 450.00
+          apiGravity: 32.5
+          gorKscfPerBbl: 2.56
+          bswPercent: 8.76
+        formationsFound:
+          - formationName: "Mirador"
+            topMdFeet: 6200.00
+            topTvdFeet: 6100.00
+            topTvdssFeet: 5560.00
+        reservoirFormationName: "Mirador"
+        casingsPlaced:
+          - holeDiameterCode: "26"
+            casingSizeCode: "20"
+            gradeCode: "K55"
+            weightLbsPerFtCode: "94"
+            shoeDepthFeet: 500.00
+            cementTopFeet: 0.00
+        logsRun:
+          - logTypeCode: "GR"
+            initialDepthFeet: 500.00
+            finalDepthFeet: 8500.00
+            scale: 200
+        freshwaterSands:
+          - number: 1
+            topFeet: 200.00
+            baseFeet: 450.00
+
+    CreateWellResponse:
+      summary: Respuesta de creación exitosa
+      value:
+        id: "00000000-0000-0000-0000-000000000001"
+        consecutiveNumber: "FOPA-RUBI-0425-2026-001"
+        status: "DRAFT"
+        fiscalizedUwi: "50568RUBI0157RUBIVOOPH–CC"
+        operatorId: "2fa85f64-5717-4562-b3fc-2c963f66afa6"
+        operatorName: "Ecopetrol S.A."
+        createdAt: "2026-04-21T14:30:00Z"
+        createdBy: "john.doe@example.com"

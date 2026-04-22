@@ -2,12 +2,17 @@
 
 ## Diseño Orientado a Dominios (DDD) — Nivel Conceptual Consolidado
 
-**Versión:** 0.5
+**Versión:** 0.6
 **Fecha:** Abril 2026
 **Motor:** SQL Server 2022 / SQL Azure
 **Alcance:** Topología de esquemas, bounded contexts, entidades principales, patrones de modelado de coordenadas, ciclo de vida de pozos, y gobernanza evolutiva del modelo. No incluye aún atributos exhaustivos, constraints e índices a detalle — se derivan en fase posterior.
 
-**Cambios respecto a v0.4:**
+**Cambios respecto a v0.5:**
+- **Nuevo `FormDefinition` `FOPA`** (§4.6): Registro de Pozo Antiguo — formulario de incorporación de pozos ya perforados con flujo de aprobación ANH.
+- **Nuevas entidades en `ops`** (§5.10): `LegacyWellRegistrationData` y 8 satélites (`LwrCompletionInterval`, `LwrProductionTest`, `LwrInjectivityTest`, `LwrMonitoringTest`, `LwrFormationFound`, `LwrCasingPlaced`, `LwrLogRun`, `LwrFreshwaterSand`) para el payload del registro de pozo antiguo (RQF_GOP_25).
+- **Sin breaking changes.** Todas las adiciones son aditivas; las entidades existentes no se modifican.
+
+**Cambios previos (v0.4 → v0.5):**
 - **Alineación con `CONSTITUTION-ba.md` v1.5–v1.7** (OWASP hardening, Token Exchange federado + usuarios locales, permisos de BD).
 - Nueva **§9.0 Integración con ASP.NET Core Identity**: declara que `User` extiende `IdentityUser<long>` y `Role` extiende `IdentityRole<int>`; uso nativo de `AspNetUserLogins` para federación OIDC (reemplaza columnas custom de IdP externo).
 - **§9.1 `User`** — renombrado `AuthType` → `AuthenticationSource` (`External` | `Local`); eliminado `IsSuperuser` (contradecía §7.4 de CONSTITUTION).
@@ -164,6 +169,14 @@ Patrón genérico para catálogos cerrados pequeños: Tipo de Pozo por Ángulo (
 ### 4.6 `FormDefinition`
 Define cada forma ministerial (F101, F102, F103, F202, F204…). Atributos: `FormCode`, `Name`, `Series` (100 / 200), `RegulatoryResolution`, `Version`, `Status` (Active / Deprecated), `FormKey` (identificador UI). Define **qué formas existen**, no cómo se tramitan.
 
+**Nueva entrada (RQF_GOP_25):**
+
+| `FormCode` | `Name` | `Series` | `RegulatoryResolution` | `Status` |
+|---|---|---|---|---|
+| `FOPA` | Registro de Pozo Antiguo / Perforado | 100 | Resolución ANH 0545/2025 | Active |
+
+> **Nota:** `FOPA` no es una forma ministerial numerada. Es un formulario de incorporación de pozos ya perforados al sistema GOP 360°. Se modela como `FormDefinition` para reutilizar el patrón de `Procedure` + `WorkflowInstance` y mantener consistencia con el ciclo de trámites regulatorios.
+
 ### 4.7 `AttachmentDefinition`
 Catálogo de tipos de documento anexo por forma. Atributos: `FormDefinitionId`, `Name`, `IsRequired`, `AllowedExtensions`, `MaxSizeBytes`, `NamePattern`. Configurable por Admin GOP ANH sin cambios de código (RN-17 HU F101).
 
@@ -284,6 +297,180 @@ Flags simultáneos que coexisten con cualquier etapa.
 | `IdocData` | Daily Completion Operations Report |
 
 Satélites (bits, mud, cementations, formations traversed, influxes, losses, logs) cuelgan de `IdopData` e `IdocData`.
+
+### 5.10 Registro de Pozo Antiguo — entidades de payload (RQF_GOP_25)
+
+Conjunto de entidades para el formulario de Registro de Pozo Antiguo/Perforado (`FormDefinition.FormCode = 'FOPA'`). Sigue el mismo patrón de `FormNNNData` + satélites, con la diferencia semántica de que no es una forma ministerial numerada sino un formulario de incorporación.
+
+#### 5.10.1 `LegacyWellRegistrationData` (payload principal)
+
+Entidad raíz del payload. Relación 1:1 con `Procedure` (via `Procedure.WellId` tras aprobación o referencia directa pre-aprobación).
+
+**Atributos principales:**
+
+| Grupo | Atributos | Tipo lógico | Observación |
+|-------|-----------|-------------|-------------|
+| **Identificación** | `LegacyWellRegistrationDataId` (PK), `ProcedureId` (FK → `Procedure`, unique) | `bigint`, `bigint` | 1:1 con `Procedure` |
+| **Contrato histórico** | `InitialOperatorId` (FK nullable → `Operator`), `InitialOperatorFreeText`, `InitialContractName`, `InitialContractTypeCode` | `bigint`, `nvarchar(200)`, `nvarchar(100)`, `nvarchar(30)` | RN-04: si `InitialOperatorId` es NULL, `InitialOperatorFreeText` obligatorio |
+| **Clasificación** | `HasForm103`, `AvmWellReference`, `LaheeClassificationCode`, `FinalClassificationCode` | `bit`, `nvarchar(50)`, `nvarchar(10)`, `nvarchar(20)` | RN-06, RN-07 |
+| **Objetivo** | `Form103ObjectiveCode`, `CurrentObjectiveCode`, `CurrentWellStateCode` | `nvarchar(10)`, `nvarchar(10)`, `nvarchar(40)` | I-01: dos campos distintos |
+| **Coordenadas Origen Inicial** | `InitialDatumType`, `InitialOriginCode`, `InitialSurfaceNorthing`, `InitialSurfaceEasting`, `InitialBottomNorthing`, `InitialBottomEasting` | `nvarchar(20)`, `nvarchar(50)`, `decimal(15,2)` × 4 | RN-13: exclusión mutua de datum |
+| **Coordenadas Magna Nacional** | `NationalSurfaceNorthing`, `NationalSurfaceEasting`, `NationalBottomNorthing`, `NationalBottomEasting` | `decimal(15,2)` × 4 | Sección 6 HU |
+| **Coordenadas Geográficas** | `GeoSurfaceLatitude`, `GeoSurfaceLongitude`, `GeoBottomLatitude`, `GeoBottomLongitude` | `decimal(9,6)` × 4 | RN-14: latitud ±, longitud negativa |
+| **Información física** | `TrapTypeCode`, `RotaryTableElevationFeet`, `GroundElevationFeet`, `WaterDepthMeters`, `CoastDistanceKm`, `TotalDepthMdFeet`, `TotalDepthTvdFeet`, `TotalDepthTvdssFeet` | `nvarchar(20)`, `decimal(10,2)` × 7 | RN-09, RN-15 |
+| **Fechas** | `DrillingStartDate`, `DrillingEndDate`, `CompletionDate`, `Form103ApprovalDate` | `date` × 4 | `Form103ApprovalDate` nullable si `HasForm103 = 0` |
+| **Terminación** | `CompletionDescription`, `CompletionDescriptionOther`, `TotalOpenFeet` | `nvarchar(30)`, `nvarchar(100)`, `decimal(10,2)` | RN-17 a RN-20 |
+| **Otros** | `SgcUwi`, `ReservoirFormationName`, `Observations` | `nvarchar(80)`, `nvarchar(200)`, `nvarchar(300)` | |
+| **Auditoría** | `CreatedAt`, `CreatedBy`, `UpdatedAt`, `UpdatedBy` | `datetime2(7)`, `bigint` × 2 | Estándar §2.4 |
+
+**Constraints:**
+- `CK_LwrData_ClassificationMutualExclusion` — exactamente uno de `LaheeClassificationCode` o `FinalClassificationCode` no nulo (al momento del envío; ambos pueden ser nulos en borrador).
+- `CK_LwrData_InitialOperator` — `InitialOperatorId IS NOT NULL OR InitialOperatorFreeText IS NOT NULL`.
+- `UQ_LwrData_ProcedureId` — unique sobre `ProcedureId`.
+
+#### 5.10.2 `LwrCompletionInterval`
+
+Intervalos de terminación (tabla dinámica Sección 9).
+
+| Columna | Tipo | Null | Descripción |
+|---------|------|------|-------------|
+| `LwrCompletionIntervalId` | `bigint` PK IDENTITY | No | — |
+| `LegacyWellRegistrationDataId` | `bigint` FK | No | Padre |
+| `SequenceNumber` | `int` | No | Orden de la fila |
+| `FromFeet` | `decimal(10,2)` | No | Profundidad desde |
+| `ToFeet` | `decimal(10,2)` | No | Profundidad hasta |
+| `ShotsPerFoot` | `int` | Sí | NULL si tipo ≠ Cañoneo (RN-18) |
+| `Status` | `nvarchar(10)` | No | `Open` / `Isolated` |
+| `ThicknessFeet` | `decimal(10,2)` | No | Calculado: `ToFeet - FromFeet` (RN-19) |
+
+**Constraint:** `CK_LwrInterval_FromLessThanTo` — `FromFeet < ToFeet`.
+
+#### 5.10.3 `LwrProductionTest`
+
+Prueba de producción (condicional: Objetivo F103 = PH).
+
+| Columna | Tipo | Null | Descripción |
+|---------|------|------|-------------|
+| `LwrProductionTestId` | `bigint` PK IDENTITY | No | — |
+| `LegacyWellRegistrationDataId` | `bigint` FK UNIQUE | No | 0..1:1 |
+| `TestDate` | `date` | No | Fecha de la prueba (24h) |
+| `OilRateBblPerDay` | `decimal(12,2)` | No | Tasa petróleo neta |
+| `GasRateKscfPerDay` | `decimal(12,2)` | No | Tasa gas neta |
+| `WaterRateBblPerDay` | `decimal(12,2)` | No | Tasa agua neta |
+| `WellheadPressurePsia` | `decimal(10,2)` | No | Presión en cabeza |
+| `ApiGravity` | `decimal(5,1)` | No | API a 60°F |
+| `GorKscfPerBbl` | `decimal(10,2)` | No | Gas-Oil Ratio |
+| `BswPercent` | `decimal(5,2)` | No | BSW % |
+
+#### 5.10.4 `LwrInjectivityTest`
+
+Prueba de inyectividad (condicional: Objetivo F103 ∈ {I, D}).
+
+| Columna | Tipo | Null | Descripción |
+|---------|------|------|-------------|
+| `LwrInjectivityTestId` | `bigint` PK IDENTITY | No | — |
+| `LegacyWellRegistrationDataId` | `bigint` FK UNIQUE | No | 0..1:1 |
+| `TestDate` | `date` | No | |
+| `InjectedVolume` | `decimal(12,2)` | No | Bbls o Kpc |
+| `FractureGradient` | `nvarchar(100)` | No | Alfanumérico |
+| `MaxInjectionRateBblPerDay` | `int` | No | Tasa máxima autorizada |
+
+#### 5.10.5 `LwrMonitoringTest`
+
+Prueba de monitoreo (condicional: Objetivo F103 = M).
+
+| Columna | Tipo | Null | Descripción |
+|---------|------|------|-------------|
+| `LwrMonitoringTestId` | `bigint` PK IDENTITY | No | — |
+| `LegacyWellRegistrationDataId` | `bigint` FK UNIQUE | No | 0..1:1 |
+| `TestDate` | `date` | No | |
+| `MonitorApprovalTime` | `int` | No | Tiempo máximo de monitoreo |
+| `MonitoredVariable` | `nvarchar(20)` | No | `Pressure` / `Temperature` / `Both` |
+
+#### 5.10.6 `LwrFormationFound`
+
+Formaciones encontradas (tabla dinámica Sección 11).
+
+| Columna | Tipo | Null | Descripción |
+|---------|------|------|-------------|
+| `LwrFormationFoundId` | `bigint` PK IDENTITY | No | — |
+| `LegacyWellRegistrationDataId` | `bigint` FK | No | Padre |
+| `SequenceNumber` | `int` | No | Orden (profundidad) |
+| `FormationName` | `nvarchar(200)` | No | |
+| `TopMdFeet` | `decimal(10,2)` | No | Tras redondeo RN-23 |
+| `TopTvdFeet` | `decimal(10,2)` | No | Tras redondeo RN-23 |
+| `TopTvdssFeet` | `decimal(10,2)` | No | |
+| `BaseMdFeet` | `decimal(10,2)` | No | Calculado: Tope MD de siguiente formación o Profundidad Total (RN-21) |
+| `BaseTvdFeet` | `decimal(10,2)` | No | Análogo |
+| `BaseTvdssFeet` | `decimal(10,2)` | No | Análogo |
+| `ThicknessMdFeet` | `decimal(10,2)` | No | Calculado: `BaseMdFeet - TopMdFeet` (RN-22) |
+
+#### 5.10.7 `LwrCasingPlaced`
+
+Tuberías de revestimiento (tabla dinámica Sección 13).
+
+| Columna | Tipo | Null | Descripción |
+|---------|------|------|-------------|
+| `LwrCasingPlacedId` | `bigint` PK IDENTITY | No | — |
+| `LegacyWellRegistrationDataId` | `bigint` FK | No | Padre |
+| `SequenceNumber` | `int` | No | Orden |
+| `HoleDiameterCode` | `nvarchar(20)` | No | Catálogo (pendiente poblar, S-01) |
+| `CasingSizeCode` | `nvarchar(20)` | No | Catálogo |
+| `GradeCode` | `nvarchar(20)` | No | Catálogo |
+| `WeightLbsPerFtCode` | `nvarchar(20)` | No | Catálogo |
+| `ShoeDepthFeet` | `decimal(10,2)` | No | Profundidad zapato |
+| `CementTopFeet` | `decimal(10,2)` | No | Tope cemento |
+
+#### 5.10.8 `LwrLogRun`
+
+Registros corridos (tabla dinámica Sección 14).
+
+| Columna | Tipo | Null | Descripción |
+|---------|------|------|-------------|
+| `LwrLogRunId` | `bigint` PK IDENTITY | No | — |
+| `LegacyWellRegistrationDataId` | `bigint` FK | No | Padre |
+| `SequenceNumber` | `int` | No | Orden |
+| `LogTypeCode` | `nvarchar(50)` | No | Catálogo |
+| `InitialDepthFeet` | `decimal(10,2)` | No | |
+| `FinalDepthFeet` | `decimal(10,2)` | No | |
+| `Scale` | `decimal(10,2)` | No | |
+| `AttachmentId` | `bigint` FK nullable → `ProcedureAttachment` | Sí | Documento soporte (RN-26) |
+
+#### 5.10.9 `LwrFreshwaterSand`
+
+Arenas de agua dulce (tabla dinámica Sección 15).
+
+| Columna | Tipo | Null | Descripción |
+|---------|------|------|-------------|
+| `LwrFreshwaterSandId` | `bigint` PK IDENTITY | No | — |
+| `LegacyWellRegistrationDataId` | `bigint` FK | No | Padre |
+| `Number` | `int` | No | Número de arena |
+| `TopFeet` | `decimal(10,2)` | No | |
+| `BaseFeet` | `decimal(10,2)` | No | |
+
+**Constraint:** `CK_LwrFreshwaterSand_TopLessThanBase` — `TopFeet < BaseFeet`.
+
+#### 5.10.10 Índices sugeridos
+
+- `IX_LwrData_ProcedureId` — lookup por trámite.
+- `IX_LwrCompletionInterval_DataId` — satélites por padre.
+- `IX_LwrFormationFound_DataId_SequenceNumber` — formaciones ordenadas.
+- `IX_LwrCasingPlaced_DataId` — tuberías por padre.
+- `IX_LwrLogRun_DataId` — registros por padre.
+- `IX_LwrFreshwaterSand_DataId` — arenas por padre.
+
+#### 5.10.11 Patrón de uso al aprobar
+
+Al aprobarse el registro:
+
+1. Se crea `ops.Well` con `IsLegacyWell = true`, poblado con datos del `LegacyWellRegistrationData` (contrato, campo, clasificación, tipo de pozo, etc.).
+2. Se crea `ops.FiscalizedUwiComponent` con los componentes desagregados del UWI.
+3. Se crean 2 `ops.WellLocation` (`Surface` y `BottomHole`) con `Point` transformado desde coordenadas geográficas y `OriginalReportJson` con los 3 sistemas de coordenadas.
+4. Se crea un `ops.WellFormation` por cada `LwrFormationFound`.
+5. Se crea un `ops.WellCasing` por cada `LwrCasingPlaced`.
+6. Se crea `ops.WellStateHistory` con `TriggerEvent = 'LegacyWellRegistration'` y `NewStateId` mapeado desde `CurrentWellStateCode` (tabla de equivalencia en spec-backend §4.5).
+7. Se actualiza `Well.CurrentStateId`.
+8. Los datos del payload (`LegacyWellRegistrationData` + satélites) **no se eliminan** — se preservan como registro histórico del formulario original.
 
 ---
 
@@ -989,4 +1176,19 @@ Estas validaciones viven en `tests/migration/*` como tSQLt tests que corren en C
 
 ---
 
-*Fin del documento — versión 0.3*
+## 18. Changelog
+
+| Versión | Fecha | Feature origen | Descripción |
+|---------|-------|----------------|-------------|
+| 0.6 | 2026-04-22 | RQF_GOP_25 | Nueva `FormDefinition` `FOPA` (§4.6). Nuevas entidades en `ops`: `LegacyWellRegistrationData` + 8 satélites (§5.10). Sin breaking changes. |
+| 0.5 | 2026-04 | Alineación CONSTITUTION v1.5-1.7 | §9.0 Identity, §9.6 RefreshToken, §9.7 RevokedAccessToken, §10.1 AuditLog catálogo EventType, §14 permisos BD. |
+| 0.4 | 2026-04 | Alineación CONSTITUTION v1.1 | UserRole extendido con alcance, eliminada UserOperatorScope. |
+| 0.3 | 2026-04 | Estándares ANH | Nomenclatura PascalCase + inglés, compatibilidad PPDM 3.9, gobernanza §17. |
+
+## 19. [BREAKING CHANGES] pendientes de aprobación
+
+*Ninguno en esta versión.*
+
+---
+
+*Fin del documento — versión 0.6*
