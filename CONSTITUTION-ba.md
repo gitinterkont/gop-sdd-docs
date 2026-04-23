@@ -1,7 +1,7 @@
 # CONSTITUTION-ba.md
 ## Constitución Arquitectónica y Técnica del Backend — GOP 360°
 
-**Versión:** 1.8
+**Versión:** 1.10
 **Fecha:** Abril 2026
 **Estado:** Vigente para V1
 **Autor responsable:** Arquitectura de Software — Modernización GOP
@@ -17,10 +17,24 @@
 Este documento usa las palabras clave **MUST**, **SHOULD** y **MAY** conforme a RFC 2119, traducidas así:
 
 - **MUST (obligatorio):** la regla es vinculante. Un PR que no cumpla se bloquea en revisión.
-- **SHOULD (recomendado):** la regla se cumple salvo justificación técnica documentada como ADR.
+- **SHOULD (recomendado):** la regla se cumple salvo justificación técnica razonable documentada en el PR (descripción o comentario en el código con el motivo). No exige ADR salvo que así lo indique el §específico.
 - **MAY (permitido):** la regla describe una práctica válida pero no prescriptiva; el equipo decide caso por caso.
 
 Los términos **PROHIBIDO** o **NUNCA** indican líneas rojas absolutas: ningún caso justifica transgredirlas sin modificar primero este documento.
+
+### 0.1 Política unificada de ADR
+
+Para evitar fricción innecesaria, un **ADR (Architecture Decision Record)** en `/backend/docs/adr/NNNN-titulo-corto.md` es **obligatorio** únicamente en los siguientes casos:
+
+1. Modificar, añadir o eliminar una regla de este documento.
+2. Transgredir una línea roja de **§18** (si se considera estrictamente inevitable, el ADR debe preceder al PR y contar con aprobación del arquitecto).
+3. Cambiar un componente del **stack tecnológico** (§4) o introducir una dependencia NuGet fuera del stack aprobado.
+4. Desactivar o relajar una regla de **§12** (seguridad / OWASP).
+5. Introducir un patrón transversal nuevo que afecte a múltiples microservicios (ej. event bus, cache distribuido, nuevo middleware global).
+
+Para el resto de desviaciones (excepciones puntuales a un **SHOULD**, umbrales numéricos configurables, decisiones tácticas de implementación) basta con **justificación en el PR**: descripción, comentario en el código donde aplique y, si la decisión se repetirá, apunte en la guía interna del servicio. No se requiere ADR.
+
+> **Rationale.** Un documento con ADR obligatorio por cada desviación trivial vacía el significado de SHOULD y convierte al equipo en tramitador. Los ADR deben reservarse para decisiones que un nuevo miembro del equipo necesitaría conocer meses después.
 
 ---
 
@@ -54,9 +68,8 @@ En caso de conflicto entre este documento y los anteriores, los documentos de AN
 
 Este documento es un artefacto vivo. Los cambios se proponen vía Pull Request al repositorio donde vive.
 
-- **Cambio mayor** (nueva sección, cambio de un patrón obligatorio, nueva línea roja) **MUST** ser aprobado por el arquitecto de software del proyecto y el líder técnico de backend.
-- **Cambio menor** (aclaraciones, ejemplos, correcciones) **MAY** aprobarse por un solo revisor senior.
-- **Cada cambio significativo MUST** registrarse como ADR en `/backend/docs/adr/NNNN-titulo-corto.md` antes de modificar este documento.
+- **Cambio mayor** (nueva sección, cambio de un patrón obligatorio, nueva línea roja) **MUST** ser aprobado por el arquitecto de software del proyecto y el líder técnico de backend, y **MUST** registrarse como ADR antes de mergear el PR que lo introduce (ver §0.1).
+- **Cambio menor** (aclaraciones, ejemplos, correcciones tipográficas, reformulaciones que no alteran la semántica de una regla) **MAY** aprobarse por un solo revisor senior, **sin ADR**.
 
 ### 2.2 Versionado
 
@@ -69,11 +82,12 @@ El código existente al momento de un cambio Major **SHOULD** adecuarse dentro d
 
 ### 2.3 Excepciones
 
-Cualquier excepción a una regla **MUST** o **SHOULD** de este documento **MUST**:
+Las excepciones se manejan según la política unificada de **§0.1**:
 
-1. Registrarse como ADR.
-2. Referenciarse en el código donde se aplica (comentario con enlace al ADR).
-3. Revisarse en el siguiente refinamiento de arquitectura.
+- **Excepciones a reglas MUST fuera de §12 y §18**, o excepciones a cualquier SHOULD: se justifican en el PR (descripción y comentario en el código). No requieren ADR.
+- **Excepciones a reglas MUST de §12 (seguridad) o a líneas rojas de §18**: requieren ADR previo + aprobación del arquitecto, conforme a §0.1.
+- Toda excepción **MUST** dejar trazabilidad en el código donde se aplica (comentario con el motivo o enlace al ADR cuando aplique).
+- Las excepciones a reglas MUST de §12/§18 se revisan en el siguiente refinamiento de arquitectura para decidir si se cierran o se elevan a cambio formal del documento.
 
 ---
 
@@ -130,9 +144,9 @@ Toda dependencia NuGet **MUST** tener licencia compatible con uso en software de
 - **Permitidas con evaluación:** LGPL (solo dynamic linking), MPL 2.0, EPL 2.0. Requieren ADR documentando cómo se consume.
 - **PROHIBIDAS** salvo aprobación explícita de arquitectura + OTI: GPL v2, GPL v3, AGPL, SSPL, licencias comerciales no revisadas, licencias "source-available" con restricciones de uso.
 
-**MUST:** el pipeline de CI ejecuta validación automática de licencias en cada build usando `dotnet-project-licenses` (o equivalente). El build **MUST** fallar si detecta una licencia no permitida.
+**MUST:** el pipeline de CI ejecuta validación automática de licencias en cada build usando `dotnet-project-licenses` (o equivalente). El build **MUST** fallar si detecta una licencia no permitida. El CI es la única fuente de verdad para el cumplimiento — no se exige duplicar la verificación manualmente en el PR.
 
-**MUST:** toda adición de dependencia en PR requiere comentario del desarrollador indicando licencia. El revisor valida antes de aprobar.
+**MAY:** el desarrollador incluya en el PR una nota sobre la licencia de la dependencia añadida si considera que facilita la revisión (útil para dependencias nuevas o poco conocidas). No es obligatorio; CI lo cubre.
 
 **Nota sobre mediadores:** este proyecto **no** usa MediatR ni equivalentes comerciales en V1. El patrón CQRS se implementa con dispatchers propios en `Anh.Gop.Shared.Cqrs` (ver §10.1 y §19.7). La adopción de un mediador externo se evalúa solo si se cumplen los criterios de §10.1.1.
 
@@ -687,21 +701,46 @@ Cada entidad del modelo de datos **MUST** clasificarse en uno de estos cuatro ti
 | **C. Entidad transversal** | Miles de items, cambian con negocio | Endpoint de búsqueda paginada + por ID con cache |
 | **D. Entidad transaccional de dominio** | Datos de operación frecuente | Lista resumida + detalle limpio |
 
-La clasificación es decisión de arquitectura y **MUST** documentarse en el modelo de datos. Cambiar clasificación requiere ADR.
+La clasificación es decisión de arquitectura y **MUST** documentarse en el modelo de datos. Cambiar clasificación de una entidad ya productiva requiere ADR (impacta contratos públicos y caching del FE).
 
 ### 8.3 Patrón para entidades Tipo D — listado vs detalle
 
 Esta es la regla más crítica del proyecto y aplica a la mayoría de endpoints.
 
+#### 8.3.0 Principio rector — crudo con IDs; excepción calificada en listados
+
+El backend emite **DTOs crudos con identificadores** (`OperatorId`, `ContractId`, `CurrentStateId`, etc.). **El frontend es quien hidrata** las etiquetas humanas resolviendo esos IDs contra sus servicios de catálogo locales (ver `CONSTITUTION-fe.md` §22 — *Normalized DTO with Client-Side Hydration*). Este principio aplica por defecto a todas las respuestas de la API.
+
+**Justificación:**
+- Una sola fuente de verdad para los catálogos (el FE los consume una vez y los reutiliza).
+- Payloads más pequeños y cacheables.
+- Si un catálogo cambia (renombra un estado, añade un campo), no hay que tocar endpoints transaccionales.
+- Idioma/localización se aplican en cliente sin variar el contrato del back.
+
+**Excepción calificada — listados (`SummaryDto`):** los endpoints de listado **MAY** incluir etiquetas precomputadas (resueltas por JOIN en SQL) de los catálogos referenciados. Esto se permite **exclusivamente** porque:
+- Un listado puede devolver 50–500 filas por página; hidratar 500 × N IDs de catálogo en el cliente es costoso y ruidoso.
+- La etiqueta se muestra literalmente en la columna de la tabla — es parte de la vista, no un dato derivado.
+- El FE no puede conocer de antemano qué columnas van a necesitarse desde catálogos transversales (Tipo C, miles de items) sin prefetch que no vale la pena.
+
+**Qué NO está cubierto por la excepción:**
+- El DTO de **detalle** (`DetailDto`) nunca lleva labels precomputados — FE hidrata. La excepción del Summary no se extiende al Detail.
+- Sub-agregados embebidos dentro del Summary — si se necesitan, el DTO no es un Summary; es una vista (§8.5).
+- Texto largo, descripciones o campos no visibles en la tabla por defecto — esos viven en el Detail.
+
+**Resumen en una línea:**
+> **Regla general:** DTOs crudos con IDs → FE hidrata. **Excepción calificada:** `SummaryDto` de listados puede llevar labels precomputados de catálogos para evitar hidratación masiva en tablas.
+
 #### 8.3.1 DTO de listado (Summary DTO)
 
 **MUST** nombrar `{Entity}SummaryDto`.
 
-**MUST** incluir **solo** campos que cumplan al menos una de estas condiciones:
+**SHOULD** incluir solo campos que cumplan al menos una de estas condiciones:
 - (a) Identificador (PK o código visible al usuario).
 - (b) Se muestra como columna visible por defecto en la tabla de la vista.
 - (c) Se usa para filtrar u ordenar el listado.
 - (d) Es flag de estado que condiciona acciones en la fila (`isEditable`, `hasActiveAlerts`).
+
+> El criterio es mantener el Summary liviano — si un caso legítimo requiere un campo adicional (ej. tooltip de uso frecuente), inclúyase con justificación en el PR. Lo que no cabe aquí se resuelve con un DTO especializado (§8.5).
 
 **MAY** incluir labels precomputados de catálogos referenciados (resueltos vía JOIN en SQL), para evitar que el frontend tenga que hidratar 5,000 filas en un listado.
 
@@ -799,7 +838,8 @@ GET /api/v1/wells/{wellId}/procedures?status=active
 **MUST:**
 - Nombre del DTO refleja propósito: `WellMapMarkerDto`, `WellExportRowDto`, `WellAutocompleteDto`.
 - Viven en folder separado: `Application/Wells/Views/` vs `Application/Wells/Queries/`.
-- Cada uno tiene su ADR documentando por qué existe como excepción.
+
+**SHOULD:** documentar en el PR o en la propia vista por qué no bastan Summary/Detail. ADR solo si introduce un patrón recurrente nuevo (ver §0.1).
 
 ### 8.6 Patrón para entidades Tipo A — Catálogos globales
 
@@ -854,7 +894,7 @@ GET /api/v1/session/bootstrap
 
 **MUST:** todo endpoint vive bajo `/api/v{N}/...`. Versión inicial: `v1`.
 
-**MUST:** cuando se publica `v2`, el `v1` **MUST** mantenerse vivo al menos 6 meses tras la liberación de `v2`, salvo decisión explícita documentada.
+**SHOULD:** cuando se publica `v2`, `v1` se mantiene vivo al menos 6 meses tras la liberación de `v2` para dar margen de migración a los consumidores. El plazo puede acortarse si el inventario de consumidores es conocido y todos han migrado; se documenta la decisión (y el plan de migración confirmado) en el PR de retiro. Prolongarlo es siempre aceptable.
 
 **PROHIBIDO** breaking changes en un endpoint una vez publicado en su versión.
 
@@ -880,12 +920,14 @@ GET /api/v1/session/bootstrap
 }
 ```
 
-**MUST:** `pageSize` máximo:
+**MUST:** todo endpoint de listado define un `pageSize` máximo configurable y rechaza con HTTP 400 cualquier solicitud que lo exceda. No se permiten listados sin tope superior.
+
+**SHOULD:** valores por defecto del proyecto (pueden ajustarse por endpoint con justificación en el PR, sin ADR):
 - Default: 50.
 - Máximo en endpoints normales: 100.
 - Máximo en endpoints de exportación: 500 por página (y exportación paginada internamente si excede).
 
-**MUST:** solicitud con `pageSize > max` retorna HTTP 400 con mensaje claro.
+Los valores viven en configuración del servicio, no hardcoded en código de contrato.
 
 ### 9.3 Filtros tipados
 
@@ -1016,7 +1058,11 @@ El desarrollador de feature **no** elige el status — la extensión lo determin
 - Códigos de error documentados.
 - Esquemas de seguridad (Bearer Auth).
 
-**PROHIBIDO** endpoints sin documentación XML en producción.
+**MUST:** los **endpoints públicos de la API de negocio** (`/api/v{N}/...`) tienen documentación XML completa en producción (resumen, parámetros, responses, códigos de error esperados).
+
+**SHOULD:** DTOs y propiedades con nombres autodocumentados tienen al menos un resumen corto; no se exige documentar cada propiedad trivial (`Id`, `Name`, `CreatedAt`).
+
+Los endpoints de **infraestructura** (health checks, métricas Prometheus, `/swagger` mismo) están **exentos** de este requisito.
 
 ### 9.9 Convenciones adicionales de serialización
 
@@ -1268,8 +1314,8 @@ Cuando un servicio A necesita informar o consultar a un servicio B, **MUST** usa
 #### 10.5.3 Evolución a V2
 
 - **V2+:** se introduce event bus (RabbitMQ, Azure Service Bus o equivalente). Los domain events se promueven a **integration events** publicables entre servicios.
-- La migración **MUST** ser gradual: los escenarios críticos se mueven primero, y el HTTP síncrono se preserva como fallback durante al menos un release.
-- Integration events **MUST** versionarse independientemente del schema de dominio (contrato público entre servicios).
+- La migración **SHOULD** ser gradual: los escenarios críticos se mueven primero, y el HTTP síncrono se preserva como fallback durante al menos un release.
+- Cuando se introduzca event bus, los integration events **MUST** versionarse independientemente del schema de dominio (son contrato público entre servicios). Esta regla se activa al iniciar V2 y se desarrollará en una revisión futura del documento.
 
 ### 10.6 Validación de DTOs
 
@@ -1290,6 +1336,183 @@ public class CreateWellValidator : AbstractValidator<CreateWellCommand>
 ### 10.7 Specification Pattern
 
 **MAY** usarse para queries complejas reutilizables. **SHOULD** usarse cuando la misma consulta aparece en 3+ lugares.
+
+### 10.8 Desacoplamiento de reglas de formularios y lógica de negocio
+
+#### 10.8.1 Propósito
+
+Esta sección establece un enfoque base y pragmático para mantener las **reglas de formularios** y la **lógica de negocio** desacopladas del código transaccional (controllers, handlers de POST/PUT, servicios). El objetivo es que el equipo tenga un lugar claro donde colocar este tipo de reglas cuando sea razonable, sin forzar el patrón en escenarios donde genere más complejidad de la que evita.
+
+**No es camisa de fuerza.** Este enfoque aplica a la mayoría de casos simples y medios. Casos complejos **MAY** quedar hardcodeados en código tipado cuando el intento de parametrizarlos genere más daño que beneficio, siempre documentando la decisión.
+
+#### 10.8.2 Dos principios rectores
+
+**Principio 1 — Reglas de formulario servidas desde el back, evaluadas en memoria por el front.**
+
+Las reglas de comportamiento de formularios (campos condicionales, valores por defecto, habilitación/deshabilitación, filtros de catálogos, validaciones simples) **SHOULD** definirse en el backend y exponerse al frontend en un único request al cargar el formulario. El frontend las evalúa en memoria mientras el usuario diligencia, sin enviar peticiones al back por cada cambio de campo.
+
+Esto evita que la lógica se duplique entre back y front, reduce chatter de red, y mejora la experiencia del usuario.
+
+**Principio 2 — Reglas de negocio desacopladas del código transaccional del backend.**
+
+La lógica de negocio consumida por endpoints POST, PUT, PATCH **SHOULD** mantenerse desacoplada de los handlers. Los handlers coordinan; las reglas viven en archivos o componentes dedicados dentro de la misma estructura del código fuente. Esto permite: versionamiento claro en Git, tests enfocados sobre las reglas, y evolución independiente del código transaccional.
+
+#### 10.8.3 Ubicación dentro del código fuente
+
+Cada microservicio organiza las reglas dentro de su proyecto `Application`, en una carpeta dedicada:
+
+```
+/src/Anh.Gop.{Service}.Application/
+  /Rules/
+    /forms/             ← reglas de formularios (consumidas por back y front)
+    /business/          ← reglas de lógica de negocio transaccional
+    /schemas/           ← JSON schemas para validar los archivos anteriores
+```
+
+**MUST:** las reglas viven en el repositorio del servicio (versionadas en Git), no en base de datos, salvo que un administrador no-técnico deba gestionarlas vía UI.
+
+#### 10.8.4 Formato preferido
+
+- **SHOULD:** usar archivos **JSON** como formato canónico para reglas declarativas. Razones: legibilidad, versionado limpio con diffs útiles, soporte nativo de herramientas, compatibilidad con el frontend.
+- **MAY:** usar YAML si un caso particular lo justifica por legibilidad superior.
+- **MAY:** usar clases C# planas (sin lógica, solo datos) cuando la regla sea específica de un único handler y no amerite archivo externo.
+
+#### 10.8.5 Exposición al frontend
+
+Cada formulario que siga el Principio 1 **SHOULD** exponer un endpoint estándar:
+
+```
+GET /api/v1/forms/{form-key}/rules
+```
+
+Que retorna las reglas del formulario en un formato consumible directamente por el frontend. El frontend las usa para renderizar condicionalmente sin más viajes al back.
+
+**MUST:** el backend **también** aplica estas mismas reglas al validar el payload recibido en el POST/PUT correspondiente. No se confía únicamente en validación del cliente.
+
+#### 10.8.6 Qué va y qué no va en los archivos de reglas
+
+**Va bien en archivos de reglas:**
+- Campos obligatorios condicionales (ej. "si pozo es offshore, lámina de agua es obligatoria").
+- Valores por defecto según otro campo (ej. "si Lahee A3, el campo se asigna a exploratorio").
+- Filtros de catálogos según contexto (ej. "mostrar solo contratos del operador actual").
+- Plazos, umbrales, rangos numéricos.
+- Habilitación/deshabilitación de campos según estado o rol.
+- Listas de anexos requeridos por forma.
+
+**No va en archivos de reglas (queda en código tipado):**
+- Cálculos complejos (construcción del UWI, transformación de coordenadas).
+- Reglas que requieren consultas a BD o servicios externos.
+- Validaciones cruzadas con lógica condicional profunda (más de 2-3 niveles).
+- Expresiones lógicas arbitrarias evaluadas dinámicamente.
+- Invariantes de dominio (esas viven en el agregado).
+
+**Regla heurística:** si la regla se puede expresar como "datos más referencias a códigos conocidos", va en archivo. Si requiere escribir una expresión para evaluar, va en código.
+
+#### 10.8.7 Referencias a código desde los archivos
+
+Cuando una regla necesita evaluar algo que no es un dato puro (por ejemplo, "aplicar el placeholder de campo exploratorio"), el archivo JSON **MUST** referenciar un **código simbólico** que tenga implementación C# tipada correspondiente.
+
+**Ejemplo válido en JSON:**
+```json
+{ "defaultValueFrom": "EXPLORATORY_FIELD_PLACEHOLDER" }
+```
+
+**Con implementación en código:**
+```csharp
+public class ExploratoryFieldResolver : IPlaceholderResolver { ... }
+```
+
+**PROHIBIDO** expresiones evaluables dinámicamente en los archivos (ej. `"expression": "fieldA > 5 && fieldB == 'X'"`). Si se necesita lógica, se implementa como clase C# y se referencia por código simbólico.
+
+#### 10.8.8 Validación al arranque
+
+**MUST:** los archivos de reglas se cargan y validan al arrancar el servicio contra su JSON schema. Si un archivo es inválido, o si referencia un código simbólico sin implementación, el servicio **no arranca**. Los errores de configuración deben manifestarse inmediatamente, no en runtime impredecible.
+
+#### 10.8.9 Relación con arquitectura Clean / hexagonal
+
+Este patrón es compatible y refuerza el aislamiento del dominio:
+
+- Los archivos JSON son **recursos de proyecto**.
+- El motor que los carga (`Anh.Gop.Shared.RulesEngine`) vive en **Infrastructure**.
+- Los tipos que representan las reglas parseadas viven en **Domain** o en la shared library.
+- El código de dominio consume las reglas a través de un **puerto** (`IRulesProvider`), nunca leyendo archivos directamente.
+
+**PROHIBIDO** leer archivos JSON, deserializar, o tocar el sistema de archivos desde código en Domain o desde handlers de Application.
+
+#### 10.8.10 Cuándo NO aplicar este patrón
+
+Este enfoque es ayuda, no obligación. Se **MAY** dejar una regla hardcodeada en código cuando:
+
+- La regla es **invariante de dominio** (debe vivir en la entidad).
+- La regla es **normativa estable con base legal citable** (queda en código con comentario de norma).
+- La regla es tan específica a un caso de uso único que externalizarla solo agrega indirección.
+- La regla tiene complejidad tal que expresarla declarativamente requeriría un mini-lenguaje propio.
+
+En esos casos, documentar brevemente la decisión (en código o ADR corto) y seguir. La sección siguiente (§10.8.10.1) define **cómo** dejar esa regla hardcodeada de forma mantenible — el objetivo es que una regla en código no se convierta en deuda técnica ni en "magia escondida" dentro de un handler o componente.
+
+#### 10.8.10.1 Cómo mantener una regla hardcodeada de forma sostenible
+
+Cuando se decide dejar una regla en código (back o front) por complejidad o por alguno de los criterios anteriores, **SHOULD** aplicarse las siguientes prácticas para que la regla siga siendo localizable, testeable y auditable:
+
+**1. Ubicación dedicada, nunca inline.**
+La regla vive en una **clase o función con nombre propio** que refleje la regla de negocio, no dentro del handler, del controller o de un componente UI.
+
+- Back: `Application/Rules/Business/{ContextName}/{RuleName}.cs` — aunque la regla no sea declarativa, ocupa el mismo árbol de carpetas que las reglas externalizadas (`Application/Rules/` de §10.8.3). Así, quien busque "reglas de negocio del servicio" encuentra todo en un solo lugar.
+- Front: `features/{module}/business-rules/{rule-name}.ts` — clase o función pura, importada por los componentes.
+
+Ejemplos de naming: `WellAbandonmentApprovalRule`, `F103ProducingFormationDerivationRule`, `ContractTransferEligibilityRule`. **Nombres prohibidos:** `Helper`, `Utils`, `Manager`, `Service` a secas.
+
+**2. Interfaz o contrato tipado.**
+La regla se expone detrás de una interfaz (`IAbandonmentApprovalRule`) o tipo de función (`type Evaluate = (input: FormData) => RuleResult`). Permite:
+- Inyectarla en handlers (testing con double).
+- Reemplazarla por una versión declarativa en el futuro sin tocar los consumidores (patrón Strategy).
+- Documentar el contrato (input → output) sin leer la implementación.
+
+**3. Test de comportamiento por cada rama significativa.**
+Una regla hardcodeada **MUST** tener su test dedicado cubriendo cada rama de decisión relevante (no solo el happy path). Estructura Given-When-Then. Si la regla se reescribe a formato declarativo más adelante, los tests sirven como oráculo de equivalencia.
+
+**4. Encabezado de procedencia.**
+En el archivo de la regla, un bloque de comentario fijo:
+
+```csharp
+// Regla de negocio: Aprobación de abandono de pozo (F107).
+// Base: Resolución ANH 40048 de 2015, art. 12 numerales 2–5.
+// Contraparte FE: apps/gop-web/src/app/features/wells/business-rules/well-abandonment-approval.rule.ts
+// Autor inicial: <equipo>  — Fecha: 2026-04
+// Motivo de hardcodeo: la evaluación combina estado del pozo, tipo de formación y
+// antigüedad del operador con ramas anidadas que un formato declarativo oscurecería.
+// Revisión sugerida: cuando la resolución se actualice o si emergen >2 reglas similares.
+```
+
+El encabezado permite al próximo desarrollador entender en 30 segundos por qué la regla vive en código y qué hay que revisar si la normativa cambia.
+
+**5. Pareja BE ↔ FE declarada explícitamente.**
+Si la misma regla se evalúa en back y en front (caso típico de validación preventiva en la UI), **MUST** cumplirse:
+
+- El back es la fuente de verdad (línea roja §10.8.11 — no duplicar lógica). El FE implementa una versión **equivalente** para mejorar UX, nunca para reemplazar la validación del back.
+- Ambos archivos se referencian mutuamente en el encabezado (como en el ejemplo arriba).
+- Si la regla declarativa (§10.8.2) aplica parcialmente, el FE **SHOULD** apoyarse en las porciones declarativas y dejar hardcodeado solo lo realmente complejo, documentando la delimitación.
+- Cada cambio en una rama implica PR coordinado actualizando ambas implementaciones y sus tests. CI **SHOULD** tener un check (p. ej. test de contrato compartido) que falle si una versión evoluciona sin la otra.
+
+**6. Registro en el catálogo interno del servicio.**
+Cada microservicio **SHOULD** mantener un archivo `Application/Rules/BUSINESS-RULES.md` (o equivalente en el FE) que liste:
+
+| Código | Nombre | Ubicación (BE) | Ubicación (FE) | Base normativa | Última revisión |
+|---|---|---|---|---|---|
+
+Funciona como índice. Sin este registro, las reglas hardcodeadas se vuelven invisibles — nadie recuerda que existen hasta que se rompen.
+
+**7. Revisión periódica.**
+En cada refinamiento de arquitectura (o al menos una vez por release mayor), el equipo revisa el catálogo de reglas hardcodeadas y evalúa si alguna cumple ya las condiciones para externalizarse al formato declarativo (§10.8.2). Las reglas hardcodeadas son **aceptables pero no permanentes por diseño** — se quedan mientras la complejidad lo justifique.
+
+**Resumen:** una regla hardcodeada no deja de ser una regla de negocio. Aplican los mismos principios que a una regla declarativa — nombre propio, test, documentación, referencia cruzada BE/FE y trazabilidad normativa — solo que la **forma** de expresarla es código en lugar de JSON.
+
+#### 10.8.11 Líneas rojas
+
+- **NUNCA** construir un motor de reglas Turing-completo con evaluación dinámica de expresiones desde archivos o BD.
+- **NUNCA** cargar reglas desde archivos sin validar schema al arranque.
+- **NUNCA** duplicar lógica de validación entre back y front. La fuente de verdad es el back; el front consume.
+- **NUNCA** leer archivos de reglas directamente desde código de Domain o desde handlers. Siempre vía puerto inyectado.
 
 ---
 
@@ -1348,7 +1571,7 @@ Cada migración se nombra con prefijo numérico secuencial y descripción breve 
 
 **MUST:** commands que modifican múltiples agregados usan transacción explícita (via UnitOfWork o `IDbContextTransaction`).
 
-**MUST:** transacciones cortas — ninguna transacción abierta durante >5 segundos en producción.
+**SHOULD:** transacciones cortas. Como referencia operativa, una transacción que permanezca abierta >5 segundos en producción es sospechosa y se monitorea con alerta (ver §16). La regla se hace cumplir por observabilidad y revisión de performance, no por bloqueo de PR — hay casos legítimos de batches o migraciones que la exceden puntualmente.
 
 ### 11.5 Concurrencia
 
@@ -1509,39 +1732,44 @@ Los controles residuales que sí requieren decisión por spec (qué endpoints ex
 
 ### 12.5 Rate limiting y protección anti-abuso *(A04, A07)*
 
-**MUST:** usar `Microsoft.AspNetCore.RateLimiting` (built-in .NET 10) con policies predefinidas en la shared library:
+**MUST:** todo microservicio aplica rate limiting usando `Microsoft.AspNetCore.RateLimiting` (built-in .NET 10) con el conjunto de policies predefinidas en `Anh.Gop.Shared.Security`. No se admiten endpoints públicos sin policy asignada.
 
-| Policy | Límite | Aplica a |
+**SHOULD:** los valores iniciales del proyecto (ajustables por configuración en cada entorno, sin ADR):
+
+| Policy | Límite de referencia | Aplica a |
 |---|---|---|
 | `auth-strict` | 5 intentos/min por IP + usuario | `POST /auth/login`, refresh de token, reset de password |
 | `api-standard` | 60 req/min por usuario autenticado | Endpoints de mutación por defecto |
 | `export-heavy` | 5 exports/hora por usuario | Endpoints de exportación masiva |
 | `read-standard` | 300 req/min por usuario | Endpoints de consulta |
 
+Los umbrales son guías iniciales; pueden endurecerse o relajarse por entorno a partir de métricas reales, documentando el ajuste en la configuración del servicio. Lo que no se admite es **desactivar** la policy sin ADR.
+
 nginx mantiene rate limit por **IP** (defensa de borde); la app mantiene rate limit por **identidad** (JWT `sub`). Ambos son complementarios.
 
 ### 12.6 Políticas de password, lockout y MFA *(A07)*
 
-Configuradas una sola vez en `gop.identity` vía `IdentityOptions`:
+Configuradas una sola vez en `gop.identity` vía `IdentityOptions`. Los **principios** son MUST; los **valores concretos** son SHOULD y viven en la política operativa del servicio (configurables por entorno), conforme a la normativa ANH vigente.
 
-**Password:**
-- Mínimo 12 caracteres.
-- MUST contener mayúscula, minúscula, dígito y símbolo.
-- Historial de últimos 5; no permitir reutilización.
-- Expiración 90 días (con notificación a los 14 y 7 días previos).
-
-**Lockout:**
-- 5 intentos fallidos → bloqueo 15 min.
-- Contador dual: por usuario y por IP (IP se acumula aunque usuario rote).
-
-**MFA:**
-- **MUST** para roles `ANH_Admin`, `ANH_Fiscalizador`, `Operator_Admin` y cualquier rol con capabilities de firma o aprobación.
-- Shared policy `[RequireMfa]` se aplica por atributo en endpoints sensibles (firmas, aprobaciones de abandono, cambios de rol).
-
-**Sesión:**
-- Idle timeout: 30 min.
-- Absolute timeout: 8 h.
+**MUST (principios):**
+- Existe política de password con mínimo de longitud y complejidad (mayúscula, minúscula, dígito, símbolo).
+- Existe historial de passwords para evitar reutilización inmediata.
+- Existe mecanismo de lockout por intentos fallidos con contador dual (usuario + IP).
 - Refresh token rotation con detección de reuso → invalidación de familia.
+- MFA obligatorio para roles `ANH_Admin`, `ANH_Fiscalizador`, `Operator_Admin` y cualquier rol con capabilities de firma o aprobación. Shared policy `[RequireMfa]` se aplica por atributo en endpoints sensibles (firmas, aprobaciones de abandono, cambios de rol).
+
+**SHOULD (valores iniciales del proyecto, revisables por política operativa):**
+
+| Aspecto | Valor inicial |
+|---|---|
+| Longitud mínima de password | 12 caracteres |
+| Historial | 5 últimas passwords |
+| Expiración | 90 días (con notificación a los 14 y 7 días previos) |
+| Lockout | 5 intentos fallidos → bloqueo 15 min |
+| Idle timeout de sesión | 30 min |
+| Absolute timeout de sesión | 8 h |
+
+> Estos valores se alinean con la política vigente de ANH. Si la ANH adopta NIST SP 800-63B u otra guía (p. ej. sin expiración forzosa de password), la política se actualiza sin necesidad de cambiar este documento.
 
 ### 12.7 Gestión de secretos y configuración *(A02, A05)*
 
@@ -1584,7 +1812,7 @@ Configuradas una sola vez en `gop.identity` vía `IdentityOptions`:
 - XML: si una integración externa lo impone, `XmlReaderSettings` MUST tener `DtdProcessing = Prohibit` y `XmlResolver = null` (previene XXE).
 
 **PROHIBIDO:**
-- `Newtonsoft.Json` salvo excepción vía ADR aprobado (motivo: superficie histórica de vulnerabilidades en deserialización polimórfica con `TypeNameHandling`).
+- Introducir `Newtonsoft.Json` como serializer primario de la aplicación (motivo: superficie histórica de vulnerabilidades en deserialización polimórfica con `TypeNameHandling`). Las dependencias transitivas que lo arrastren se toleran siempre que no se use directamente desde código propio; si un SDK de terceros lo exige para interoperar con el sistema externo, se documenta la excepción en el PR. Ver también §18.3.
 - `BinaryFormatter` (deprecado y removido por Microsoft, superficie RCE).
 - Deserialización de tipos no controlados (`object`, `dynamic`) desde entrada externa.
 
@@ -1726,14 +1954,16 @@ _logger.LogInformation("Well {WellId} created by user {UserId} in tenant {Tenant
 
 ### 14.1 Cobertura mínima
 
-**MUST:** cobertura de unit tests ≥ 80% (obligatorio por Estándar de Codificación).
+**MUST:** existe suite de tests automatizados ejecutada en CI que cubre los comportamientos críticos de §14.2–14.5.
+
+**SHOULD:** cobertura de unit tests ≥ 80% (alineado con el Estándar de Codificación ANH). El porcentaje es una señal, no un fin — se prefiere **cobertura de comportamientos** (los listados en §14.2–14.5) sobre cobertura puramente numérica. Un PR por debajo del umbral se discute, no se bloquea automáticamente, si los comportamientos críticos están cubiertos.
 
 ### 14.2 Unit tests
 
-**MUST** para:
+**MUST** tests que cubran los siguientes comportamientos:
 - Lógica de `Domain` (entidades, value objects, domain services).
-- Command/Query handlers en `Application` (implementaciones de `ICommandHandler<,>` / `IQueryHandler<,>`).
-- Validators de FluentValidation.
+- Command/Query handlers en `Application` (implementaciones de `ICommandHandler<,>` / `IQueryHandler<,>`) — al menos caminos happy y principales de error.
+- Validators de FluentValidation — reglas no triviales.
 
 **SHOULD** tests de comportamiento (Given-When-Then) más que de implementación.
 
@@ -1744,7 +1974,9 @@ _logger.LogInformation("Well {WellId} created by user {UserId} in tenant {Tenant
 - Flujos de autorización.
 - Migraciones de BD.
 
-**MUST:** usar `WebApplicationFactory` con base de datos SQL Server real en contenedor o LocalDb — **nunca** tests unitarios mockeando EF.
+**SHOULD:** usar `WebApplicationFactory` con base de datos SQL Server real en contenedor o LocalDb para tests que ejerciten EF Core y queries.
+
+**MAY:** mockear `DbContext` o `IDbContextFactory` en unit tests puntuales cuando el test valida lógica que es independiente del ORM (ej. un guard clause en un handler antes de tocar el repositorio). En todo caso, los comportamientos que dependen de SQL real se cubren con integration tests.
 
 ### 14.4 tSQLt
 
@@ -1884,7 +2116,7 @@ nginx en V1 **no** realiza las siguientes funciones — éstas quedan en otros c
 
 ## 18. Líneas rojas consolidadas
 
-Esta lista es vinculante. Cualquier PR que transgreda una línea roja **MUST** rechazarse.
+Esta lista es vinculante. Cualquier PR que transgreda una línea roja **MUST** rechazarse. Transgredirla de forma excepcional requiere ADR previo con aprobación de arquitectura, conforme a §0.1. Las reglas de aquí son **invariantes arquitectónicos y de seguridad** — reglas operativas o de estilo viven en sus secciones respectivas.
 
 ### 18.1 Arquitectura
 
@@ -1897,22 +2129,23 @@ Esta lista es vinculante. Cualquier PR que transgreda una línea roja **MUST** r
 
 ### 18.2 Datos
 
-- **NUNCA** `SELECT *`.
-- **NUNCA** concatenación SQL con inputs.
+- **NUNCA** concatenación SQL con inputs (SQL injection).
 - **NUNCA** queries sobre entidades de tenant sin filtro de tenant.
 - **NUNCA** editar migraciones ya aplicadas.
 - **NUNCA** `DbContext` directo en controllers.
+
+> **Nota:** `SELECT *` es un **anti-patrón a evitar** (SHOULD), no una línea roja — en queries internas o scripts puntuales puede ser aceptable. La regla arquitectónica vive en §11.1.
 
 ### 18.3 Seguridad
 
 - **NUNCA** credenciales en código, config files sin cifrar, o logs.
 - **NUNCA** stack traces en responses de producción.
-- **NUNCA** `[AllowAnonymous]` fuera de endpoints de autenticación.
+- **NUNCA** `[AllowAnonymous]` fuera de endpoints de autenticación y endpoints de infraestructura explícitamente listados (health checks, métricas, OpenAPI en entornos no productivos). El listado vive en la configuración de la shared library y se revisa por arquitectura.
 - **NUNCA** log de tokens, passwords, datos sensibles de usuario.
 - **NUNCA** confiar en headers `X-User-*` sin validar JWT.
 - **NUNCA** inserción manual a `audit.AuditLog` desde código de dominio o aplicación. La escritura de auditoría se realiza **exclusivamente** a través del pipeline de Audit.NET + `Audit.EntityFramework.Core` (ver §11.6).
 - **NUNCA** `new HttpClient()` directo para llamadas salientes. Usar `IHttpClientFactory` con cliente nombrado registrado en `Anh.Gop.Shared.Security`, que incluye `SsrfProtectionHandler` (ver §12.10).
-- **NUNCA** `Newtonsoft.Json` salvo excepción vía ADR aprobado. Serializer único: `System.Text.Json` con defaults endurecidos (ver §12.9).
+- **NUNCA** introducir `Newtonsoft.Json` como serializer primario de la aplicación. Serializer único: `System.Text.Json` con defaults endurecidos (ver §12.9). Si una dependencia transitiva lo arrastra, se tolera siempre que no se use directamente desde código propio; si un SDK de terceros lo exige para interoperar, se documenta la excepción (sin ADR salvo que se convierta en patrón).
 - **NUNCA** algoritmos criptográficos débiles: MD5, SHA-1, DES, 3DES, RC4, modo ECB. `System.Random` no es aceptable para tokens/salts/ids de sesión — usar `RandomNumberGenerator` (ver §12.8).
 - **NUNCA** secretos en `appsettings*.json`, repositorio git o logs. Usar variables de entorno o Key Vault (ver §12.7).
 - **NUNCA** filtros LDAP construidos con interpolación de strings — usar `LdapFilterEncoder.Encode(input)` (ver §12.11).
@@ -1922,16 +2155,15 @@ Esta lista es vinculante. Cualquier PR que transgreda una línea roja **MUST** r
 
 - **NUNCA** breaking changes en versión publicada.
 - **NUNCA** devolver entidades de dominio o modelos de EF directamente.
-- **NUNCA** endpoints sin documentación OpenAPI en producción.
+- **NUNCA** endpoints públicos de negocio sin documentación OpenAPI en producción (los endpoints de infraestructura están exentos; ver §9.8).
 - **NUNCA** endpoints GET con efectos secundarios.
 - **NUNCA** envelopes propietarios tipo `{ status, message, data }` / `{ success, result, error }` en responses de éxito. El contrato es: **body = DTO** (o `204 No Content`), **errores = ProblemDetails RFC 7807**, **metadatos = headers HTTP** (`Location`, `ETag`, `X-Pagination`). Ver §9.6.
 - **NUNCA** fechas fuera de ISO 8601, enums como entero, o propiedades JSON que no sean `camelCase` en contratos públicos (ver §9.9).
 - **NUNCA** archivos binarios embebidos como base64 en JSON salvo excepción documentada < 100 KB (ver §9.9.5).
 
-### 18.5 Testing
+### 18.5 Testing e higiene de CI
 
-- **NUNCA** push a main con tests rotos.
-- **NUNCA** `#pragma` deshabilitando analyzers sin comentario justificando.
+Las reglas de disciplina de CI (no pushear con tests rotos, no silenciar analyzers sin justificación, etc.) viven en la **política de CI y en los analyzers configurados como warning-as-error** (ver §12.13 y §14), no aquí. Se enforzan por pipeline, no por revisión manual de líneas rojas.
 
 ---
 
@@ -2681,7 +2913,67 @@ La shared library `Anh.Gop.Shared.Auth` expone las siguientes opciones de config
 
 ---
 
-*Fin del CONSTITUTION-ba.md v1.8*
+*Fin del CONSTITUTION-ba.md v1.10*
+
+---
+
+## Control de cambios v1.9 → v1.10
+
+**Ajuste de agilidad — calibración de imperativos sin sacrificar el núcleo duro:**
+
+El diagnóstico interno identificó que la ratio MUST/PROHIBIDO vs SHOULD/MAY (≈6:1) mezclaba invariantes arquitectónicos con decisiones operativas, generando fricción innecesaria. Esta versión recalibra sin modificar ningún invariante de seguridad, multitenant, Clean Architecture o contratos de API.
+
+- **§0 — nueva §0.1 "Política unificada de ADR"** — ADR obligatorio solo para: modificar este documento, transgredir §18, cambiar stack (§4) o dependencia fuera del aprobado, relajar §12 (seguridad), introducir patrón transversal nuevo. El resto se justifica en el PR. Redefinido SHOULD: basta justificación en PR (no ADR) salvo que el § específico diga lo contrario.
+- **§2.2** — ADR solo para cambios mayores del documento. Cambios menores (ejemplos, aclaraciones) sin ADR.
+- **§2.3** — Excepciones a MUST fuera de §12/§18 y a cualquier SHOULD se justifican en el PR, sin ADR. ADR solo se mantiene para excepciones a §12/§18.
+- **§4.1 Licencias** — eliminado el MUST del comentario manual de licencia en cada PR (CI ya lo valida). Degradado a MAY como cortesía para dependencias poco conocidas.
+- **§8.2** — cambiar clasificación de entidades ya productivas requiere ADR (impacto real en contratos); la clasificación inicial solo se documenta en el modelo.
+- **§8.3.0 — nueva sección "Principio rector — crudo con IDs; excepción calificada en listados"** — consagra explícitamente como principio rector que el backend emite DTOs crudos con IDs y el frontend hidrata (alineado con `CONSTITUTION-fe.md` §22). La inclusión de labels precomputados queda formalmente limitada a los `SummaryDto` de listados, como excepción justificada para evitar hidratación masiva en tablas. El Detail **nunca** lleva labels.
+- **§10.8.10.1 — nueva sección "Cómo mantener una regla hardcodeada de forma sostenible"** — 7 prácticas aplicables cuando la complejidad obliga a dejar la regla en código (back y/o front) en lugar de externalizarla al formato declarativo: ubicación dedicada con naming propio, interfaz tipada (patrón Strategy-ready), test por rama, encabezado de procedencia normativa, pareja BE↔FE declarada con el backend como fuente de verdad, registro en catálogo interno (`BUSINESS-RULES.md`), revisión periódica para evaluar externalización futura. Convierte la excepción de §10.8.10 de un "documentar y seguir" genérico en una pauta concreta de mantenibilidad.
+- **§8.3.1 SummaryDto** — composición de campos cambia de MUST a SHOULD (nombre y tipo siguen siendo MUST). Desviaciones puntuales se justifican en el PR.
+- **§8.5 Endpoints especializados** — ADR solo cuando el DTO especializado introduce patrón recurrente nuevo; casos puntuales se documentan en el PR.
+- **§9.1 Versionado** — v1 vivo 6 meses tras v2 degradado de MUST a SHOULD. Se puede acortar si los consumidores han migrado (documentado en el PR de retiro).
+- **§9.3 Paginación** — MUST: existe tope superior de `pageSize`. Valores concretos (50/100/500) degradados a SHOULD configurables por entorno, sin ADR.
+- **§9.8 Documentación** — MUST de XML docs acotado a **endpoints públicos de negocio**. DTOs con nombres autodocumentados → SHOULD. Endpoints de infraestructura (health, metrics, swagger) exentos.
+- **§10.5.3 Evolución a V2** — versionado independiente de integration events se activa cuando se introduzca event bus; migración gradual degradada a SHOULD.
+- **§11.4 Transacciones** — transacciones cortas degradado a SHOULD. Umbral de 5s pasa a ser referencia de monitoring/alerta, no bloqueante en PR.
+- **§12.5 Rate limiting** — MUST: todo endpoint con policy asignada. Valores concretos de las 4 policies degradados a SHOULD configurables por entorno; desactivar la policy sigue requiriendo ADR.
+- **§12.6 Password policy** — separada en principios MUST (existe política, historial, lockout, rotation, MFA) y valores SHOULD (12 chars, historial 5, 90 días, etc.) alineables con política operativa ANH sin tocar el documento.
+- **§14.1 Cobertura** — 80% degradado a SHOULD; MUST es que existan tests para los comportamientos críticos de §14.2–14.5.
+- **§14.3 Integration tests** — "nunca mockear EF" relajado: SHOULD usar SQL real; MAY mockear `DbContext` en unit tests puntuales cuyo comportamiento es independiente del ORM.
+- **§18 Líneas rojas** — reformulada como invariantes arquitectónicos y de seguridad:
+  - §18.2 Datos: `SELECT *` removido de líneas rojas (pasa a anti-patrón SHOULD en §11.1).
+  - §18.3 Seguridad: `[AllowAnonymous]` admite excepción explícita para endpoints de infraestructura listados en shared lib.
+  - §18.3 Seguridad: `Newtonsoft.Json` reformulado — se prohíbe introducirlo como serializer primario; dependencias transitivas y SDKs de terceros no activan el bloqueo.
+  - §18.4 API: prohibición de endpoints sin OpenAPI acotada a endpoints públicos de negocio.
+  - §18.5 Testing: sección reemplazada por referencia a políticas de CI/analyzers (las reglas de "no push con tests rotos" y "no `#pragma` sin comentario" viven en pipeline/analyzers, no como líneas rojas arquitectónicas).
+
+**Impacto global:**
+
+- MUST/PROHIBIDO/NUNCA pasan de ~33 standalone + 50 NUNCA a ~25 MUST + ~40 NUNCA. SHOULD sube de ~20 a ~35. Ratio baja de ≈6:1 a ≈2:1.
+- Núcleo no negociable intacto: filtro de tenant, ProblemDetails/no-envelope, Result Pattern, Clean Architecture dependency rule, Audit.NET local, hardening OWASP (§12), líneas rojas de datos y seguridad.
+- Decisiones tácticas (umbrales, plazos, coberturas, composición de DTOs) pasan a ser guías con valores iniciales configurables, liberando al equipo de tramitar ADRs triviales.
+
+---
+
+## Control de cambios v1.8 → v1.9
+
+**Desacoplamiento de reglas de formularios y lógica de negocio:**
+
+- **§10.8 — nueva sección "Desacoplamiento de reglas de formularios y lógica de negocio"** con 11 subsecciones:
+  - §10.8.1 Propósito — enfoque base pragmático, no camisa de fuerza; casos complejos MAY quedar hardcodeados con decisión documentada.
+  - §10.8.2 Dos principios rectores:
+    - **P1** Reglas de formulario servidas desde el back, evaluadas en memoria por el front (single request al cargar, sin chatter).
+    - **P2** Reglas de negocio desacopladas del código transaccional (handlers coordinan, reglas en componentes dedicados).
+  - §10.8.3 Ubicación: `Application/Rules/{forms,business,schemas}` versionado en Git, no en BD (salvo admin no-técnico vía UI).
+  - §10.8.4 Formato preferido: JSON (SHOULD); YAML/C# planas (MAY).
+  - §10.8.5 Endpoint estándar `GET /api/v1/forms/{form-key}/rules`. El backend aplica las mismas reglas al validar payload — no se confía en el cliente.
+  - §10.8.6 Qué va / qué no va en archivos de reglas. Heurística: "datos + referencias a códigos conocidos" → archivo; "expresión a evaluar" → código.
+  - §10.8.7 Referencias a código por **código simbólico** (`EXPLORATORY_FIELD_PLACEHOLDER`) con implementación C# tipada (`IPlaceholderResolver`). PROHIBIDO expresiones dinámicas tipo `"fieldA > 5"`.
+  - §10.8.8 Validación al arranque contra JSON schema; servicio no arranca si hay errores.
+  - §10.8.9 Alineación Clean/hexagonal: archivos como recursos, motor en Infrastructure (`Anh.Gop.Shared.RulesEngine`), dominio consume vía puerto `IRulesProvider`.
+  - §10.8.10 Cuándo NO aplicar (invariantes de dominio, norma legal estable, caso único, complejidad que requeriría mini-lenguaje).
+  - §10.8.11 Líneas rojas: NUNCA motor Turing-completo, NUNCA cargar sin validar schema, NUNCA duplicar lógica back/front, NUNCA leer archivos desde Domain/handlers.
 
 ---
 
