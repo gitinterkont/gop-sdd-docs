@@ -2,8 +2,8 @@
 
 ## Diseño Orientado a Dominios (DDD) — Nivel Conceptual Consolidado
 
-**Versión:** 0.5
-**Fecha:** Abril 2026
+**Versión:** 0.5.1
+**Fecha:** 2026-04-28
 **Motor:** SQL Server 2022 / SQL Azure
 **Alcance:** Topología de esquemas, bounded contexts, entidades principales, patrones de modelado de coordenadas, ciclo de vida de pozos, y gobernanza evolutiva del modelo. No incluye aún atributos exhaustivos, constraints e índices a detalle — se derivan en fase posterior.
 
@@ -301,11 +301,13 @@ Modalidad en período: `PrimaryTesting` / `ExtendedTesting` / `EarlyProduction` 
 Agregado hijo. Atributos:
 
 - **Llave natural:** `ProducingFormationId`, `WellId`, `Month`, `Year`.
+- **Identificación geográfica:** `MunicipalityDaneCode` (`char(5)`, NOT NULL) — código DANE del municipio donde se ubica el pozo. Precargado desde AVM para pozos activos; ingresado manualmente para pozos históricos. *(Agregado por RQF_GOP_13 — Forma 202)*
 - **Petróleo/Agua/Gas:** diaria, mensual, acumulada, factor de campo.
 - **Calidad:** `BswPercent`, `ApiGravity`, `GasOilRatio`.
 - **Estado/tipo** del pozo al cierre.
 - **Operativos:** días activos/acumulados, método de producción.
 - **Trazabilidad:** `DataOrigin` (AVM / Manual / BulkLoad), `Version`, `Form202ProcedureId`.
+- **Flag de modificación:** `IsModified` (`bit`, NOT NULL, DEFAULT 0) — indica si el operador modificó algún valor precargado de AVM. *(Agregado por RQF_GOP_13 — Forma 202)*
 
 **Invariantes:**
 - Acumulados no disminuyen.
@@ -321,6 +323,51 @@ Ver v0.2 §6.5-6.10 con nomenclatura traducida.
 ### 6.6 Formas Serie 200 — entidades de payload
 
 `Form201Data` a `Form217Data` siguiendo el mismo patrón. Referencia a `Procedure` (1:1), `ProducingFormation` o `Field` (según aplique).
+
+#### 6.6.1 `Form202Data` — Forma 202: Informe Mensual de Producción *(Detallado por RQF_GOP_13)*
+
+Payload específico de la Forma 202. Relación 1:1 con `Procedure`. Contiene los datos del encabezado, metadatos de versionamiento, y resultados de validación cruzada. Las filas de producción por pozo viven en `MonthlyWellProduction` (§6.3), vinculadas via `Form202ProcedureId`.
+
+**Atributos:**
+
+| Columna | Tipo lógico | Tipo SQL | Nullable | Default | Constraints |
+|---|---|---|---|---|---|
+| `Form202DataId` | Identificador | `bigint IDENTITY` | No | — | PK |
+| `ProcedureId` | FK → `procedure.Procedure` | `bigint` | No | — | FK, UNIQUE (`UQ_Form202Data_Procedure`) |
+| `ProducingFormationId` | FK → `prod.ProducingFormation` | `bigint` | No | — | FK |
+| `ProductionModalityId` | FK → `prod.ProductionModality` | `bigint` | No | — | FK |
+| `ReportMonth` | Mes del reporte (1-12) | `tinyint` | No | — | `CK_Form202Data_Month CHECK (ReportMonth BETWEEN 1 AND 12)` |
+| `ReportYear` | Año del reporte | `smallint` | No | — | `CK_Form202Data_Year CHECK (ReportYear >= 2020)` |
+| `TrapType` | Tipo de trampa | `nvarchar(20)` | No | — | `CK_Form202Data_TrapType CHECK (TrapType IN ('Structural','Stratigraphic','Mixed'))` |
+| `Observations` | Observaciones del operador | `nvarchar(2000)` | Sí | NULL | — |
+| `Version` | Contador de versión (cada envío incrementa) | `int` | No | 0 | — |
+| `ReturnCount` | Cantidad de devoluciones recibidas | `int` | No | 0 | — |
+| `LastReturnReason` | Motivo de la última devolución | `nvarchar(2000)` | Sí | NULL | — |
+| `CorrectionDeadlineAt` | Plazo para corrección tras devolución | `datetime2(7)` | Sí | NULL | — |
+| `CrossValOilStatus` | Estado validación cruzada petróleo | `nvarchar(20)` | Sí | NULL | `CK_Form202Data_CrossValOil CHECK (CrossValOilStatus IN ('Passed','Warning','NotAvailable'))` |
+| `CrossValOilForm202Total` | Total petróleo calculado F202 | `decimal(18,2)` | Sí | NULL | — |
+| `CrossValOilForm204Total` | Total petróleo F204 (referencia) | `decimal(18,2)` | Sí | NULL | — |
+| `CrossValGasStatus` | Estado validación cruzada gas | `nvarchar(20)` | Sí | NULL | `CK_Form202Data_CrossValGas CHECK (CrossValGasStatus IN ('Passed','Warning','NotAvailable'))` |
+| `CrossValGasForm202Total` | Total gas calculado F202 | `decimal(18,2)` | Sí | NULL | — |
+| `CrossValGasForm205Total` | Total gas F205 (referencia) | `decimal(18,2)` | Sí | NULL | — |
+| `CrossValExecutedAt` | Fecha de última validación cruzada | `datetime2(7)` | Sí | NULL | — |
+| `CreatedAt` | Timestamp de creación | `datetime2(7)` | No | `GETUTCDATE()` | — |
+| `CreatedBy` | FK → `identity.User` | `bigint` | No | — | FK |
+| `UpdatedAt` | Timestamp de última actualización | `datetime2(7)` | No | `GETUTCDATE()` | — |
+| `UpdatedBy` | FK → `identity.User` | `bigint` | No | — | FK |
+
+**Claves e Índices:**
+- PK: `PK_Form202Data` (`Form202DataId`)
+- UK: `UQ_Form202Data_Procedure` (`ProcedureId`) — 1:1 con Procedure
+- UK: `UQ_Form202Data_NaturalKey` (`ProducingFormationId`, `ProductionModalityId`, `ReportMonth`, `ReportYear`) — unicidad de la combinación
+- IX: `IX_Form202Data_ReportPeriod` (`ReportYear`, `ReportMonth`) — consultas por período
+- IX: `IX_Form202Data_ProducingFormationId` — consultas por formación
+
+**Reglas de negocio a nivel de datos:**
+- La combinación (`ProducingFormationId`, `ProductionModalityId`, `ReportMonth`, `ReportYear`) debe ser única: una sola Forma 202 por formación + modalidad + período.
+- `Version` inicia en 0 (primer registro) y se incrementa con cada envío.
+- `CorrectionDeadlineAt` se establece al devolver la forma y se limpia al reenviar.
+- Los campos `CrossVal*` se actualizan cada vez que se ejecuta la validación cruzada.
 
 ---
 
@@ -989,4 +1036,14 @@ Estas validaciones viven en `tests/migration/*` como tSQLt tests que corren en C
 
 ---
 
-*Fin del documento — versión 0.3*
+## 18. Changelog
+
+| Fecha | Versión | Feature origen | Descripción del cambio |
+|---|---|---|---|
+| Abril 2026 | 0.5 | — | Versión base con alineación CONSTITUTION-ba.md v1.5–v1.7 |
+| 2026-04-28 | 0.5.1 | RQF_GOP_13 (Forma 202) | **§6.3 `MonthlyWellProduction`:** agregadas columnas `MunicipalityDaneCode` (`char(5)`, NOT NULL) e `IsModified` (`bit`, NOT NULL, DEFAULT 0). Cambio aditivo, no breaking. |
+| 2026-04-28 | 0.5.1 | RQF_GOP_13 (Forma 202) | **§6.6.1 `Form202Data`:** nueva entidad detallada — payload específico de la Forma 202 con encabezado, versionamiento, validación cruzada. Relación 1:1 con `Procedure`. Incluye PK, 2 UK, 2 IX, 5 CHECK constraints. |
+
+---
+
+*Fin del documento — versión 0.5.1*

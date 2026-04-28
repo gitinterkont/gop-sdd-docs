@@ -1,0 +1,1159 @@
+openapi: 3.1.0
+info:
+  title: GOP 360° — Forma 202 — Informe Mensual de Producción
+  description: |
+    API para la gestión de la Forma 202 — Informe Mensual de Producción — Pozos de Petróleo y Gas.
+    Feature RQF_GOP_13. Cubre el ciclo completo: creación, precarga AVM, edición, cargue masivo,
+    validación cruzada 204/205, firma electrónica, aprobación ANH, generación PDF y enlace ControlDoc.
+  version: 1.0.0
+  contact:
+    name: Equipo RENATA — Modernización GOP
+    email: renata@example.com
+
+servers:
+  - url: https://dev-api.gop360.example.com/api/v1
+    description: Desarrollo
+  - url: https://stg-api.gop360.example.com/api/v1
+    description: Staging
+  - url: https://api.gop360.example.com/api/v1
+    description: Producción
+
+tags:
+  - name: Form202
+    description: Gestión de instancias de Forma 202
+  - name: WellProductions
+    description: Grilla de producción por pozo (Paso 2)
+  - name: Validations
+    description: Validaciones cruzadas con Formas 204/205
+  - name: Actions
+    description: Acciones de flujo (firmar, enviar, aprobar, devolver)
+  - name: AuditLog
+    description: Log de modificaciones sobre datos precargados
+
+security:
+  - bearerAuth: []
+
+paths:
+  /production/form-202:
+    get:
+      operationId: listForm202Reports
+      summary: Listar Formas 202
+      description: Obtiene listado paginado de Formas 202 visibles según el alcance del usuario autenticado.
+      tags: [Form202]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - $ref: '#/components/parameters/SortParam'
+        - name: operatorId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: contractId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: fieldId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: formationId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: reportYear
+          in: query
+          schema: { type: integer, minimum: 2020 }
+        - name: reportMonth
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 12 }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Initial, Registration, Submitted, Approved]
+      responses:
+        '200':
+          description: Listado paginado de Formas 202
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Form202ListResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+    post:
+      operationId: createForm202Report
+      summary: Crear instancia de Forma 202
+      description: Crea una nueva instancia de Forma 202 para una combinación de campo + formación + modalidad + mes/año.
+      tags: [Form202]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateForm202Request'
+            example:
+              contractId: "00000000-0000-0000-0000-000000000010"
+              fieldId: "00000000-0000-0000-0000-000000000020"
+              producingFormationId: "00000000-0000-0000-0000-000000000030"
+              productionModalityId: "00000000-0000-0000-0000-000000000040"
+              reportMonth: 3
+              reportYear: 2026
+      responses:
+        '201':
+          description: Forma 202 creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Form202CreatedResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Conflicto — ya existe forma para esa combinación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: DUPLICATE_FORM
+                message: A Form 202 already exists for this combination
+                details: []
+                traceId: "00000000-0000-0000-0000-000000000999"
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /production/form-202/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    get:
+      operationId: getForm202Report
+      summary: Obtener detalle de Forma 202
+      description: Retorna encabezado, resumen, validación cruzada, firmas y estado del workflow.
+      tags: [Form202]
+      responses:
+        '200':
+          description: Detalle de la Forma 202
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Form202DetailResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /production/form-202/{id}/header:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    patch:
+      operationId: updateForm202Header
+      summary: Actualizar encabezado (Paso 1)
+      description: Actualiza campos editables del encabezado. Solo en estado Registration.
+      tags: [Form202]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateHeaderRequest'
+            example:
+              trapType: Stratigraphic
+              observations: "Se reportan 3 pozos inactivos por mantenimiento."
+      responses:
+        '200':
+          description: Encabezado actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Form202Header'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /production/form-202/{id}/preload:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    post:
+      operationId: preloadFromAvm
+      summary: Precargar datos desde AVM
+      description: Invoca integración con AVM para precargar pozos activos y datos de producción. Solo en estado Registration.
+      tags: [Form202]
+      responses:
+        '202':
+          description: Precarga ejecutada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreloadResponse'
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '502':
+          description: Error de conexión con AVM
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: AVM_CONNECTION_ERROR
+                message: Unable to connect to AVM system. Manual registration allowed per RN-25.
+                details: []
+                traceId: "00000000-0000-0000-0000-000000000999"
+
+  /production/form-202/{id}/well-productions:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    get:
+      operationId: listWellProductions
+      summary: Obtener grilla de producción por pozo
+      description: Retorna filas de producción paginadas. Soporta búsqueda y filtros.
+      tags: [WellProductions]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - name: pageSize
+          in: query
+          schema: { type: integer, default: 50, minimum: 1, maximum: 500 }
+        - $ref: '#/components/parameters/SortParam'
+        - name: wellStateFilter
+          in: query
+          schema:
+            type: string
+            enum: [Active, Inactive, TemporarilySuspended, Abandoned, TemporarilyAbandoned, SuspendedWithApprovedPlan, TemporarilyAbandonedWithApprovedPlan, NonCompliant]
+        - name: dataOriginFilter
+          in: query
+          schema:
+            type: string
+            enum: [Avm, Manual, BulkLoad]
+        - name: search
+          in: query
+          description: Búsqueda por nombre de pozo
+          schema: { type: string, maxLength: 100 }
+      responses:
+        '200':
+          description: Grilla de producción paginada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellProductionListResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    post:
+      operationId: addWellProduction
+      summary: Agregar pozo manualmente
+      description: Agrega una fila de producción para un pozo histórico no disponible en AVM. Solo en estado Registration.
+      tags: [WellProductions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WellProductionRequest'
+      responses:
+        '201':
+          description: Fila de pozo creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellProductionItem'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /production/form-202/{id}/well-productions/{wpId}:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+      - $ref: '#/components/parameters/WellProductionId'
+    put:
+      operationId: updateWellProduction
+      summary: Actualizar fila de producción
+      description: Modifica datos de producción de un pozo. Cambios sobre datos AVM generan log automático (RN-09).
+      tags: [WellProductions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WellProductionRequest'
+      responses:
+        '200':
+          description: Fila actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellProductionItem'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+    delete:
+      operationId: deleteWellProduction
+      summary: Eliminar fila de pozo manual
+      description: Elimina una fila agregada manualmente. No aplica a pozos AVM ni con historial previo.
+      tags: [WellProductions]
+      responses:
+        '204':
+          description: Fila eliminada
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /production/form-202/{id}/well-productions/bulk-upload:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    post:
+      operationId: bulkUploadWellProductions
+      summary: Cargue masivo desde Excel
+      description: Carga múltiples filas de pozos históricos desde archivo Excel (.xlsx). Máximo 10 MB.
+      tags: [WellProductions]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Archivo Excel (.xlsx) con la plantilla de cargue masivo
+      responses:
+        '202':
+          description: Cargue procesado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkUploadResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '413':
+          description: Archivo excede 10 MB
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /production/form-202/bulk-upload-template:
+    get:
+      operationId: downloadBulkUploadTemplate
+      summary: Descargar plantilla Excel para cargue masivo
+      tags: [WellProductions]
+      responses:
+        '200':
+          description: Archivo Excel de plantilla
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /production/form-202/{id}/totals:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    get:
+      operationId: getForm202Totals
+      summary: Obtener fila TOTAL calculada
+      description: Retorna sumatorias y promedios calculados de todas las filas de la grilla.
+      tags: [Form202]
+      responses:
+        '200':
+          description: Totales calculados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Form202Totals'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /production/form-202/{id}/cross-validations:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    post:
+      operationId: runCrossValidation
+      summary: Ejecutar validación cruzada con Formas 204/205
+      description: Compara totales de producción contra Formas 204 (petróleo) y 205 (gas). Resultado es warning, no bloqueante.
+      tags: [Validations]
+      responses:
+        '200':
+          description: Resultado de validación cruzada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossValidationResponse'
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    get:
+      operationId: getCrossValidation
+      summary: Consultar resultado de última validación cruzada
+      tags: [Validations]
+      responses:
+        '200':
+          description: Resultado de validación cruzada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossValidationResponse'
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /production/form-202/{id}/actions/sign-and-submit:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    post:
+      operationId: signAndSubmit
+      summary: Firmar electrónicamente y enviar
+      description: |
+        El Operador GOP firma electrónicamente y envía la Forma 202 para revisión.
+        Transición: Registration → Submitted. Genera PDF con firma del operador.
+      tags: [Actions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignAndSubmitRequest'
+            example:
+              engineerFullName: "Juan Pérez Rodríguez"
+              professionalLicenseNumber: "1234567"
+              confirmSignature: true
+      responses:
+        '200':
+          description: Forma firmada y enviada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /production/form-202/{id}/actions/approve:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    post:
+      operationId: approveForm202
+      summary: Aprobar y firmar por Supervisor ANH
+      description: |
+        Transición: Submitted → Approved. Genera PDF final con doble firma.
+        La forma queda bloqueada para edición.
+      tags: [Actions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignAndSubmitRequest'
+            example:
+              engineerFullName: "María García López"
+              professionalLicenseNumber: "7654321"
+              confirmSignature: true
+      responses:
+        '200':
+          description: Forma aprobada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApproveResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /production/form-202/{id}/actions/return:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    post:
+      operationId: returnForm202
+      summary: Devolver para corrección
+      description: |
+        Transición: Submitted → Registration. Solo permitido antes del día 19 del mes.
+        El operador tiene 3 días hábiles para corregir.
+      tags: [Actions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReturnRequest'
+            example:
+              returnReason: "Verificar factor de campo de petróleo del pozo Rubiales-12."
+              affectedWellIds: ["00000000-0000-0000-0000-000000000200"]
+      responses:
+        '200':
+          description: Forma devuelta para corrección
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /production/form-202/{id}/change-log:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    get:
+      operationId: getChangeLog
+      summary: Consultar log de modificaciones sobre datos AVM
+      description: Retorna las modificaciones realizadas sobre datos precargados (RN-09/RN-10). Filtrable por pozo y campo modificado.
+      tags: [AuditLog]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: wellId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: modifiedField
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Log de modificaciones paginado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeLogListResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /production/form-202/{id}/pdf:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    get:
+      operationId: downloadPdf
+      summary: Descargar PDF generado
+      tags: [Form202]
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [operatorSigned, approved, latest]
+            default: latest
+      responses:
+        '200':
+          description: PDF de la Forma 202
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /production/form-202/{id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/Form202Id'
+    get:
+      operationId: getVersionHistory
+      summary: Consultar historial de versiones
+      tags: [Form202]
+      responses:
+        '200':
+          description: Historial de versiones
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionHistoryResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT emitido por gop.identity
+
+  parameters:
+    Form202Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      description: ID de la instancia de Forma 202
+    WellProductionId:
+      name: wpId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      description: ID de la fila de producción del pozo
+    PageParam:
+      name: page
+      in: query
+      schema: { type: integer, default: 1, minimum: 1 }
+    PageSizeParam:
+      name: pageSize
+      in: query
+      schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+    SortParam:
+      name: sort
+      in: query
+      description: "Campo de orden. Prefijo '-' para descendente."
+      schema: { type: string }
+
+  schemas:
+    # --- Request Schemas ---
+    CreateForm202Request:
+      type: object
+      required: [contractId, fieldId, producingFormationId, productionModalityId, reportMonth, reportYear]
+      properties:
+        contractId: { type: string, format: uuid }
+        fieldId: { type: string, format: uuid }
+        producingFormationId: { type: string, format: uuid }
+        productionModalityId: { type: string, format: uuid }
+        reportMonth: { type: integer, minimum: 1, maximum: 12 }
+        reportYear: { type: integer, minimum: 2020 }
+
+    UpdateHeaderRequest:
+      type: object
+      properties:
+        trapType:
+          type: string
+          enum: [Structural, Stratigraphic, Mixed]
+        observations:
+          type: string
+          maxLength: 2000
+          nullable: true
+
+    WellProductionRequest:
+      type: object
+      required:
+        - wellName
+        - municipalityDaneCode
+        - productionMethod
+        - daysInMonth
+        - cumulativeDays
+        - oilDailyBopd
+        - oilMonthlyBbl
+        - oilCumulativeBbl
+        - oilFieldFactor
+        - waterDailyBwpd
+        - waterMonthlyBbl
+        - waterCumulativeBbl
+        - waterFieldFactor
+        - gasDailyKpc
+        - gasMonthlyKpc
+        - gasCumulativeKpc
+        - gasFieldFactor
+        - bswPercent
+        - apiGravity
+        - gasOilRatio
+        - wellStateEndOfMonth
+        - wellTypeEndOfMonth
+      properties:
+        wellName:
+          type: string
+          maxLength: 100
+        municipalityDaneCode:
+          type: string
+          pattern: '^\d{5}$'
+        productionMethod:
+          type: string
+          enum: [FN, BES, BCP, BM, BH, GL, Other]
+        daysInMonth:
+          type: number
+          format: double
+          minimum: 0
+        cumulativeDays:
+          type: number
+          format: double
+          minimum: 0
+        oilDailyBopd:
+          type: number
+          format: double
+          minimum: 0
+        oilMonthlyBbl:
+          type: number
+          format: double
+          minimum: 0
+        oilCumulativeBbl:
+          type: number
+          format: double
+          minimum: 0
+        oilFieldFactor:
+          type: number
+          format: double
+          minimum: 0
+        waterDailyBwpd:
+          type: number
+          format: double
+          minimum: 0
+        waterMonthlyBbl:
+          type: number
+          format: double
+          minimum: 0
+        waterCumulativeBbl:
+          type: number
+          format: double
+          minimum: 0
+        waterFieldFactor:
+          type: number
+          format: double
+          minimum: 0
+        gasDailyKpc:
+          type: number
+          format: double
+          minimum: 0
+        gasMonthlyKpc:
+          type: number
+          format: double
+          minimum: 0
+        gasCumulativeKpc:
+          type: number
+          format: double
+          minimum: 0
+        gasFieldFactor:
+          type: number
+          format: double
+          minimum: 0
+        bswPercent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+        apiGravity:
+          type: number
+          format: double
+          minimum: 0
+        gasOilRatio:
+          type: number
+          format: double
+          minimum: 0
+        wellStateEndOfMonth:
+          type: string
+          enum: [Active, Inactive, TemporarilySuspended, Abandoned, TemporarilyAbandoned, SuspendedWithApprovedPlan, TemporarilyAbandonedWithApprovedPlan, NonCompliant]
+        wellTypeEndOfMonth:
+          type: string
+          enum: [Producer, Injector, Disposal, Monitor, Other]
+
+    SignAndSubmitRequest:
+      type: object
+      required: [engineerFullName, professionalLicenseNumber, confirmSignature]
+      properties:
+        engineerFullName:
+          type: string
+          maxLength: 50
+        professionalLicenseNumber:
+          type: string
+          pattern: '^\d{7}$'
+        confirmSignature:
+          type: boolean
+
+    ReturnRequest:
+      type: object
+      required: [returnReason]
+      properties:
+        returnReason:
+          type: string
+          maxLength: 2000
+        affectedWellIds:
+          type: array
+          items: { type: string, format: uuid }
+
+    # --- Response Schemas ---
+    Form202ListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Form202ListItem' }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+
+    Form202ListItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        consecutiveNumber: { type: string }
+        operatorName: { type: string }
+        contractCode: { type: string }
+        fieldName: { type: string }
+        formationName: { type: string }
+        modalityType: { type: string }
+        reportMonth: { type: integer }
+        reportYear: { type: integer }
+        status: { type: string, enum: [Initial, Registration, Submitted, Approved] }
+        version: { type: integer }
+        wellCount: { type: integer }
+        totalOilMonthlyBbl: { type: number, nullable: true }
+        totalGasMonthlyKpc: { type: number, nullable: true }
+        createdAt: { type: string, format: date-time }
+        submittedAt: { type: string, format: date-time, nullable: true }
+        approvedAt: { type: string, format: date-time, nullable: true }
+
+    Form202CreatedResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        consecutiveNumber: { type: string }
+        status: { type: string }
+        version: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    Form202DetailResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        consecutiveNumber: { type: string }
+        radicadoNumber: { type: string, nullable: true }
+        status: { type: string, enum: [Initial, Registration, Submitted, Approved] }
+        version: { type: integer }
+        header: { $ref: '#/components/schemas/Form202Header' }
+        summary:
+          type: object
+          properties:
+            wellCount: { type: integer }
+            wellsFromAvm: { type: integer }
+            wellsManual: { type: integer }
+            wellsBulkLoaded: { type: integer }
+            totalOilMonthlyBbl: { type: number, nullable: true }
+            totalWaterMonthlyBbl: { type: number, nullable: true }
+            totalGasMonthlyKpc: { type: number, nullable: true }
+            hasModifications: { type: boolean }
+            modificationCount: { type: integer }
+        crossValidation: { $ref: '#/components/schemas/CrossValidationResponse', nullable: true }
+        signatures:
+          type: object
+          properties:
+            operator: { $ref: '#/components/schemas/SignatureInfo', nullable: true }
+            supervisor: { $ref: '#/components/schemas/SignatureInfo', nullable: true }
+        workflow:
+          type: object
+          properties:
+            currentStep: { type: string }
+            deadlineAt: { type: string, format: date-time, nullable: true }
+            daysRemaining: { type: integer, nullable: true }
+            returnCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        submittedAt: { type: string, format: date-time, nullable: true }
+        approvedAt: { type: string, format: date-time, nullable: true }
+        pdfAvailable: { type: boolean }
+
+    Form202Header:
+      type: object
+      properties:
+        reportMonth: { type: integer }
+        reportYear: { type: integer }
+        operatorId: { type: string, format: uuid }
+        operatorName: { type: string }
+        contractId: { type: string, format: uuid }
+        contractCode: { type: string }
+        fieldId: { type: string, format: uuid }
+        fieldName: { type: string }
+        producingFormationId: { type: string, format: uuid }
+        formationName: { type: string }
+        productionModalityId: { type: string, format: uuid }
+        modalityType: { type: string }
+        trapType: { type: string, enum: [Structural, Stratigraphic, Mixed] }
+        observations: { type: string, nullable: true }
+
+    SignatureInfo:
+      type: object
+      properties:
+        signedBy: { type: string }
+        professionalLicenseNumber: { type: string }
+        signedAt: { type: string, format: date-time }
+
+    WellProductionListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/WellProductionItem' }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+
+    WellProductionItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        wellId: { type: string, format: uuid, nullable: true }
+        wellName: { type: string }
+        municipalityDaneCode: { type: string }
+        productionMethod: { type: string }
+        daysInMonth: { type: number }
+        cumulativeDays: { type: number }
+        oilDailyBopd: { type: number }
+        oilMonthlyBbl: { type: number }
+        oilCumulativeBbl: { type: number }
+        oilFieldFactor: { type: number }
+        waterDailyBwpd: { type: number }
+        waterMonthlyBbl: { type: number }
+        waterCumulativeBbl: { type: number }
+        waterFieldFactor: { type: number }
+        gasDailyKpc: { type: number }
+        gasMonthlyKpc: { type: number }
+        gasCumulativeKpc: { type: number }
+        gasFieldFactor: { type: number }
+        bswPercent: { type: number }
+        apiGravity: { type: number }
+        gasOilRatio: { type: number }
+        wellStateEndOfMonth: { type: string }
+        wellTypeEndOfMonth: { type: string }
+        dataOrigin: { type: string, enum: [Avm, Manual, BulkLoad] }
+        isModified: { type: boolean }
+        modificationCount: { type: integer }
+
+    PreloadResponse:
+      type: object
+      properties:
+        preloadId: { type: string, format: uuid }
+        status: { type: string, enum: [Completed, CompletedWithWarnings, Failed] }
+        wellsPreloaded: { type: integer }
+        wellsSkipped: { type: integer }
+        warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              wellName: { type: string }
+              reason: { type: string }
+        executedAt: { type: string, format: date-time }
+
+    BulkUploadResponse:
+      type: object
+      properties:
+        bulkLoadId: { type: string, format: uuid }
+        status: { type: string, enum: [Completed, CompletedWithErrors, Failed] }
+        totalRecords: { type: integer }
+        successfulRecords: { type: integer }
+        failedRecords: { type: integer }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer }
+              wellName: { type: string }
+              field: { type: string }
+              message: { type: string }
+        warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer }
+              wellName: { type: string }
+              message: { type: string }
+
+    Form202Totals:
+      type: object
+      properties:
+        totalDaysInMonth: { type: number }
+        totalCumulativeDays: { type: number }
+        totalOilDailyBopd: { type: number }
+        totalOilMonthlyBbl: { type: number }
+        totalOilCumulativeBbl: { type: number }
+        avgOilFieldFactor: { type: number, nullable: true }
+        totalWaterDailyBwpd: { type: number }
+        totalWaterMonthlyBbl: { type: number }
+        totalWaterCumulativeBbl: { type: number }
+        avgWaterFieldFactor: { type: number, nullable: true }
+        totalGasDailyKpc: { type: number }
+        totalGasMonthlyKpc: { type: number }
+        totalGasCumulativeKpc: { type: number }
+        avgGasFieldFactor: { type: number, nullable: true }
+        totalBswPercent: { type: number, nullable: true }
+        totalApiGravity: { type: number, nullable: true }
+        totalGasOilRatio: { type: number, nullable: true }
+        wellCount: { type: integer }
+        calculatedAt: { type: string, format: date-time }
+
+    CrossValidationResponse:
+      type: object
+      properties:
+        oilValidation:
+          type: object
+          properties:
+            status: { type: string, enum: [Passed, Warning, NotAvailable] }
+            form202Total: { type: number, nullable: true }
+            form204Total: { type: number, nullable: true }
+            difference: { type: number, nullable: true }
+            differencePercent: { type: number, nullable: true }
+            message: { type: string, nullable: true }
+        gasValidation:
+          type: object
+          properties:
+            status: { type: string, enum: [Passed, Warning, NotAvailable] }
+            form202Total: { type: number, nullable: true }
+            form205Total: { type: number, nullable: true }
+            difference: { type: number, nullable: true }
+            differencePercent: { type: number, nullable: true }
+            message: { type: string, nullable: true }
+        executedAt: { type: string, format: date-time, nullable: true }
+
+    SubmitResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string }
+        submittedAt: { type: string, format: date-time }
+        signatureId: { type: string, format: uuid }
+        pdfGenerationStatus: { type: string, enum: [Queued, Generated, Failed] }
+        radicadoNumber: { type: string, nullable: true }
+        version: { type: integer }
+
+    ApproveResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string }
+        approvedAt: { type: string, format: date-time }
+        signatureId: { type: string, format: uuid }
+        pdfGenerationStatus: { type: string, enum: [Queued, Generated, Failed] }
+        radicadoNumber: { type: string, nullable: true }
+
+    ReturnResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string }
+        returnedAt: { type: string, format: date-time }
+        correctionDeadlineAt: { type: string, format: date-time }
+        returnCount: { type: integer }
+        returnReason: { type: string }
+
+    ChangeLogListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ChangeLogItem' }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+
+    ChangeLogItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        wellProductionId: { type: string, format: uuid }
+        wellName: { type: string }
+        modifiedField: { type: string }
+        originalValue: { type: string }
+        newValue: { type: string }
+        modifiedBy: { type: string }
+        modifiedByName: { type: string }
+        modifiedAt: { type: string, format: date-time }
+
+    VersionHistoryResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              version: { type: integer }
+              status: { type: string }
+              submittedAt: { type: string, format: date-time, nullable: true }
+              submittedBy: { type: string, nullable: true }
+              returnedAt: { type: string, format: date-time, nullable: true }
+              returnReason: { type: string, nullable: true }
+
+    ErrorResponse:
+      type: object
+      required: [code, message, traceId]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
+        traceId:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Error de validación
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            code: VALIDATION_ERROR
+            message: One or more validation errors occurred.
+            details: [{ field: bswPercent, message: Value must be between 0 and 100 }]
+            traceId: "00000000-0000-0000-0000-000000000999"
+    Unauthorized:
+      description: Token JWT ausente, inválido o expirado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            code: UNAUTHORIZED
+            message: Authentication required.
+            details: []
+            traceId: "00000000-0000-0000-0000-000000000999"
+    Forbidden:
+      description: Sin permisos para este recurso/acción
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            code: FORBIDDEN
+            message: You do not have permission to access this resource.
+            details: []
+            traceId: "00000000-0000-0000-0000-000000000999"
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            code: NOT_FOUND
+            message: The requested resource was not found.
+            details: []
+            traceId: "00000000-0000-0000-0000-000000000999"
+    InvalidState:
+      description: Operación no permitida en el estado actual
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            code: INVALID_STATE
+            message: This operation is not allowed in the current form state.
+            details: []
+            traceId: "00000000-0000-0000-0000-000000000999"
+    UnprocessableEntity:
+      description: Entidad no procesable por regla de negocio
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            code: CANNOT_DELETE_AVM_WELL
+            message: Cannot delete a well preloaded from AVM.
+            details: []
+            traceId: "00000000-0000-0000-0000-000000000999"
+    TooManyRequests:
+      description: Rate limit excedido
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            code: RATE_LIMIT_EXCEEDED
+            message: Too many requests. Please retry later.
+            details: []
+            traceId: "00000000-0000-0000-0000-000000000999"
