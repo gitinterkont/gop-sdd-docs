@@ -1,9 +1,9 @@
 # Principios Arquitectónicos para Angular Empresarial — GOP 360°
 
-**Versión:** 1.1
+**Versión:** 1.2
 **Fecha:** Abril 2026
 **Estado:** Vigente para V1
-**Alineación:** CONSTITUTION-ba.md v1.8 (contratos de API, identidad, uploads)
+**Alineación:** CONSTITUTION-ba.md v1.11 (contratos de API, identidad federada gop-idp/gop-identity, uploads)
 
 > **Naturaleza de este documento.** Es un documento **normativo de principios, patrones y líneas rojas** para el frontend de GOP 360°. Los bloques de código, DTOs, dominios y componentes son **ejemplos de referencia**; los objetos concretos se definen en la spec de cada feature (SDD §15). Si una spec necesita apartarse de un patrón, debe registrar un ADR.
 
@@ -198,7 +198,7 @@ Todo el manejo de errores de red es responsabilidad exclusiva de `core/http/`. L
 
 ### Formato de error canónico: ProblemDetails (RFC 7807)
 
-**Todo** error que retorna el backend GOP sigue el formato RFC 7807 (ver CONSTITUTION-ba §9.5). El interceptor debe parsear esta estructura como primera opción:
+**Todo** error que retorna el backend GOP sigue el formato RFC 7807 (ver CONSTITUTION-ba §10.5). El interceptor debe parsear esta estructura como primera opción:
 
 ```typescript
 // core/http/problem-details.ts
@@ -210,7 +210,7 @@ export interface ProblemDetails {
   instance?: string;    // URI de la ocurrencia (opcional)
   traceId?: string;     // Correlation ID para soporte
   errors?: Record<string, string[]>; // 422 — validación por campo (RFC 7807 §3.1 ext.)
-  // Extensiones propias de GOP (documentadas en CONSTITUTION-ba §9.5):
+  // Extensiones propias de GOP (documentadas en CONSTITUTION-ba §10.5):
   code?: string;        // Código de error de dominio (ej. 'WELL_ALREADY_EXISTS')
 }
 
@@ -402,7 +402,7 @@ models/
 └── index.ts            # Barrel export del grupo
 ```
 
-**Alineación con el backend GOP (CONSTITUTION-ba §9.9):** el backend emite JSON en **camelCase**, con **fechas ISO 8601 UTC**, **enums como string** y **datos crudos con IDs** (sin hidratación server-side — ver §22). Por lo tanto los DTOs del FE **no** renombran propiedades; la clase DTO y la del modelo son similares en nombres y el mapper cumple otras funciones:
+**Alineación con el backend GOP (CONSTITUTION-ba §10.9):** el backend emite JSON en **camelCase**, con **fechas ISO 8601 UTC**, **enums como string** y **datos crudos con IDs** (sin hidratación server-side — ver §22). Por lo tanto los DTOs del FE **no** renombran propiedades; la clase DTO y la del modelo son similares en nombres y el mapper cumple otras funciones:
 
 **Responsabilidades del mapper (tras alineación camelCase):**
 1. Parsear fechas ISO string → `Date` o `DateTime` de Luxon (ver §21.2).
@@ -754,8 +754,8 @@ export const roleGuard = (roles: UserRole[]): CanActivateFn => () => {
 
 ### A02 — Fallos Criptográficos / Exposición de Datos
 - **Prohibido** almacenar el **access token** en `localStorage` o `sessionStorage`. El access token vive **en memoria** (`AuthService`) — ver §24.5 y §24.7.
-- **Preferido** que el **refresh token** viaje en cookie `HttpOnly; Secure; SameSite=Strict` emitida por `gop.identity`. Si se usa `sessionStorage` como fallback, requiere ADR.
-- **Prohibido** loggear datos sensibles en `console.log` — remover todos los logs antes de merge a `main`. Esto incluye claims del JWT, passwords, datos clasificados `Confidential`/`Reserved`/`Restricted` (CONSTITUTION-ba §7.10).
+- **Preferido** que el **refresh token** viaje en cookie `HttpOnly; Secure; SameSite=Strict` emitida por `gop-identity`. Si se usa `sessionStorage` como fallback, requiere ADR.
+- **Prohibido** loggear datos sensibles en `console.log` — remover todos los logs antes de merge a `main`. Esto incluye claims del JWT, passwords, datos clasificados `Confidential`/`Reserved`/`Restricted` (CONSTITUTION-ba §8.10).
 - **Prohibido** incluir credenciales, API keys o URLs de producción en el código fuente. Usar `environments/`.
 
 ```typescript
@@ -2210,7 +2210,7 @@ El archivo `src/styles/_overrides.css` puede usar `!important` **únicamente** p
 
 ## §21 — Contrato de consumo del backend GOP
 
-> **Fuente normativa:** CONSTITUTION-ba.md v1.8, secciones §9.1–§9.9, §11.5. Esta sección traduce ese contrato a las reglas operativas del FE. Si hay contradicción, manda el backend.
+> **Fuente normativa:** CONSTITUTION-ba.md v1.11, secciones §10.1–§10.9, §12.5. Esta sección traduce ese contrato a las reglas operativas del FE. Si hay contradicción, manda el backend.
 
 ### 21.1 Principio — sin envelope en respuestas de éxito
 
@@ -2327,7 +2327,7 @@ createWell(payload: CreateWellDTO): Observable<Well> {
 
 ### 21.6 Paginación: header `X-Pagination`
 
-El backend (CONSTITUTION-ba §9.2) devuelve la lista como `T[]` en el body y los metadatos de paginación en el header `X-Pagination` (JSON):
+El backend (CONSTITUTION-ba §10.2) devuelve la lista como `T[]` en el body y los metadatos de paginación en el header `X-Pagination` (JSON):
 
 ```
 X-Pagination: {"page":1,"pageSize":20,"totalItems":137,"totalPages":7,"hasNext":true}
@@ -2374,7 +2374,7 @@ getWells(query: WellsQuery): Observable<PagedResult<Well>> {
 
 ### 21.7 Filtros, ordenamiento y query params
 
-Convenciones alineadas con CONSTITUTION-ba §9.3–§9.4:
+Convenciones alineadas con CONSTITUTION-ba §10.3–§10.4:
 
 | Query param | Formato | Ejemplo |
 |---|---|---|
@@ -2387,7 +2387,7 @@ Convenciones alineadas con CONSTITUTION-ba §9.3–§9.4:
 
 **Regla:** los servicios nunca construyen query strings a mano con `?` — usan `HttpParams` + helper `toHttpParams(query: object)` que omite nulls, convierte fechas a ISO y serializa arrays según el contrato.
 
-### 21.8 Tabla resumen: qué debe implementar el FE para cumplir el contrato BE v1.8
+### 21.8 Tabla resumen: qué debe implementar el FE para cumplir el contrato BE v1.11
 
 | Regla | Dónde vive en el FE | Estado |
 |---|---|---|
@@ -2633,7 +2633,7 @@ Para **listados grandes con render exigente** (ej. mapa con 5 000 pozos, grilla 
 
 ### 23.1 Fuente de los permisos
 
-El JWT de aplicación emitido por `gop.identity` (ver §24) incluye un claim `permissions` (o `scope` string, según convención final) con las capabilities del usuario ya evaluadas para la sesión:
+El JWT de aplicación emitido por `gop-identity` (ver §24) incluye un claim `permissions` (o `scope` string, según convención final) con las capabilities del usuario ya evaluadas para la sesión:
 
 ```json
 {
@@ -2813,11 +2813,11 @@ export const NAV_ITEMS: NavItem[] = [
 
 ## §24 — Flujo de autenticación: federado + local
 
-> **Fuente normativa:** CONSTITUTION-ba §7.1.1 (Token Exchange RFC 8693), §7.1.1.1 (usuarios locales), §19.8 (diagramas de secuencia).
+> **Fuente normativa:** CONSTITUTION-ba §8.1.1 (Token Exchange RFC 8693), §8.1.1.1 (usuarios locales), §20.8 (diagramas de secuencia).
 
 ### 24.1 Dos modos de autenticación
 
-`gop.identity` emite **siempre** el mismo JWT de aplicación, independientemente del origen. Lo que cambia es el flujo de obtención:
+`gop-identity` emite **siempre** el mismo JWT de aplicación, independientemente del origen. Lo que cambia es el flujo de obtención:
 
 | Modo | Flujo | Usuarios | UI |
 |---|---|---|---|
@@ -2831,14 +2831,14 @@ El flag `environment.auth.allowLocalAuthentication` habilita el formulario local
 ```
 [Usuario] → click "Entrar con ANH"
 [FE]     → genera PKCE (code_verifier, code_challenge), guarda en sessionStorage
-[FE]     → redirect a /gop.identity/auth/federated/start
-[gop.identity] → redirect al IdP externo con code_challenge
+[FE]     → redirect a /gop-identity/auth/federated/start
+[gop-identity] → redirect al IdP externo con code_challenge
 [IdP]    → autentica (MFA, etc.)
-[IdP]    → redirect a /gop.identity/auth/federated/callback con code
-[gop.identity] → intercambia code + code_verifier por id_token con el IdP
-[gop.identity] → valida id_token (issuer, audience, firma, exp)
-[gop.identity] → Token Exchange RFC 8693 → emite JWT de aplicación
-[gop.identity] → redirect al FE: /auth/callback?accessToken=...&refreshToken=...
+[IdP]    → redirect a /gop-identity/auth/federated/callback con code
+[gop-identity] → intercambia code + code_verifier por id_token con el IdP
+[gop-identity] → valida id_token (issuer, audience, firma, exp)
+[gop-identity] → Token Exchange RFC 8693 → emite JWT de aplicación
+[gop-identity] → redirect al FE: /auth/callback?accessToken=...&refreshToken=...
 [FE]     → hydrateFromToken(accessToken) → store refresh token (HttpOnly cookie preferible)
 [FE]     → navigate al dashboard o al returnUrl guardado
 ```
@@ -2855,9 +2855,9 @@ El flag `environment.auth.allowLocalAuthentication` habilita el formulario local
 
 ```
 [Usuario] → formulario email + password
-[FE]     → POST /gop.identity/auth/local con { email, password }
-[gop.identity] → valida con ASP.NET Core Identity (lockout, password history, MFA)
-[gop.identity] → emite JWT de aplicación (mismo shape que el federado)
+[FE]     → POST /gop-identity/auth/local con { email, password }
+[gop-identity] → valida con ASP.NET Core Identity (lockout, password history, MFA)
+[gop-identity] → emite JWT de aplicación (mismo shape que el federado)
 [FE]     → recibe { accessToken, refreshToken, user }
 [FE]     → hydrateFromToken, navigate
 ```
@@ -2876,7 +2876,7 @@ export interface AppJwtClaims {
   permissions: string[];           // capabilities ya evaluadas (§23.1)
   iat: number;
   exp: number;
-  jti: string;                     // para revocación (CONSTITUTION-ba §7.12)
+  jti: string;                     // para revocación (CONSTITUTION-ba §8.12)
 }
 ```
 
@@ -2887,15 +2887,15 @@ export interface AppJwtClaims {
 ### 24.5 Refresh y rotación del token
 
 - El **access token** tiene vida corta (~15 min). El FE lo guarda en memoria (`AuthService`), **nunca** en `localStorage`.
-- El **refresh token** vive en cookie `HttpOnly` emitida por `gop.identity` (preferible) o en `sessionStorage` (fallback documentado por ADR).
-- Antes de que expire el access token, un `tokenRefreshInterceptor` o un timer en `AuthService` dispara `POST /gop.identity/auth/refresh` y rehidrata.
+- El **refresh token** vive en cookie `HttpOnly` emitida por `gop-identity` (preferible) o en `sessionStorage` (fallback documentado por ADR).
+- Antes de que expire el access token, un `tokenRefreshInterceptor` o un timer en `AuthService` dispara `POST /gop-identity/auth/refresh` y rehidrata.
 - Si el refresh falla (reuse detection del BE, §7.1.1) → `sessionExpired` → logout forzado.
 
 ### 24.6 Logout
 
 El logout es **siempre** vía NgRx Effect (ver §4.1). Pasos:
 
-1. `POST /gop.identity/auth/logout` (revoca refresh token y access token actual en la revocation list).
+1. `POST /gop-identity/auth/logout` (revoca refresh token y access token actual en la revocation list).
 2. Si fue federado: redirect al `end_session_endpoint` del IdP (best effort).
 3. `authService.clearSession()`.
 4. `router.navigate(['/login'])`.
@@ -2905,7 +2905,7 @@ El logout es **siempre** vía NgRx Effect (ver §4.1). Pasos:
 1. **MUST** — access token en memoria (`AuthService`), nunca `localStorage`.
 2. **MUST** — refresh token en cookie `HttpOnly` (preferible) o `sessionStorage` con ADR justificatorio.
 3. **MUST** — `AuthService.hydrateFromToken` es el único punto que parsea el JWT.
-4. **MUST** — el FE nunca propaga el `id_token` del IdP externo — solo el JWT de aplicación emitido por `gop.identity` (CONSTITUTION-ba §7.1.1).
+4. **MUST** — el FE nunca propaga el `id_token` del IdP externo — solo el JWT de aplicación emitido por `gop-identity` (CONSTITUTION-ba §8.1.1).
 5. **SHOULD** — ocultar "Cambiar contraseña" cuando `authenticationSource === 'External'`.
 6. **PROHIBIDO** — `localStorage.setItem('token', ...)` en cualquier capa.
 7. **PROHIBIDO** — mostrar claims del JWT en logs/console.
@@ -2914,7 +2914,7 @@ El logout es **siempre** vía NgRx Effect (ver §4.1). Pasos:
 
 ## §25 — Uploads, downloads y exportes
 
-> **Fuente normativa:** CONSTITUTION-ba §9.9.5 (uploads/downloads), §9.9.6 (exportes).
+> **Fuente normativa:** CONSTITUTION-ba §10.9.5 (uploads/downloads), §10.9.6 (exportes).
 
 ### 25.1 Uploads (archivos adjuntos a formas, evidencias)
 
@@ -2990,7 +2990,7 @@ Endpoints de export con sufijo `/export` pueden devolver:
 - `200 + stream`: sincrónico, < 10 000 filas.
 - `202 + { operationId, statusUrl }`: asíncrono.
 
-**Patrón async (CONSTITUTION-ba §9.9.6):**
+**Patrón async (CONSTITUTION-ba §10.9.6):**
 
 ```
 [FE]  POST /api/v1/wells/export?format=xlsx  (con filtros)
@@ -3029,9 +3029,24 @@ export class AsyncOperationService {
 
 ---
 
+## Control de cambios v1.1 → v1.2
+
+**Cambio Minor — propagación del rename de microservicios y reenumeración de cross-references al BE.**
+
+- **Renames `gop.X` → `gop-X`** (kebab-case) en todas las menciones de microservicios: `gop.identity` → `gop-identity` (incluye URLs como `/gop.identity/auth/...` → `/gop-identity/auth/...`). Alinea con CONSTITUTION-ba v1.11 §6.2.
+- **Cross-references a CONSTITUTION-ba renumeradas** por la inserción de §4 (SDD) y §7.5 (PK type) en BE v1.11. Todas las referencias se desplazaron +1 sección donde correspondía:
+  - §7.x (Auth) → §8.x
+  - §9.x (DTOs/API) → §10.x
+  - §11.x (Patrones) → §12.x
+  - §19.x (Apéndices) → §20.x
+- Header alineado a `CONSTITUTION-ba.md v1.11`.
+- Sin cambios funcionales ni de patrones FE — solo numeración y nomenclatura.
+
+---
+
 ## Control de cambios v1.0 → v1.1
 
-**Alineación con CONSTITUTION-ba v1.8 + modelo de datos normalizado + autorización UI:**
+**Alineación con CONSTITUTION-ba v1.11 + modelo de datos normalizado + autorización UI:**
 
 - **Header** — añadido versionado (v1.1, fecha, estado, alineación con BE v1.8).
 - **§5 Manejo de errores HTTP** — reescrito el `errorInterceptor` para parsear **ProblemDetails RFC 7807** (`title`, `detail`, `errors{}`, `code`, `traceId`). Añadidos casos `409`, `412`, `422`, `429`. Añadido patrón de consumo de errores 422 por campo en formularios.
