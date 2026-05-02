@@ -1,7 +1,7 @@
 # CONSTITUTION-ba.md
 ## Constitución Arquitectónica y Técnica del Backend — GOP 360°
 
-**Versión:** 1.8
+**Versión:** 1.11
 **Fecha:** Abril 2026
 **Estado:** Vigente para V1
 **Autor responsable:** Arquitectura de Software — Modernización GOP
@@ -17,10 +17,24 @@
 Este documento usa las palabras clave **MUST**, **SHOULD** y **MAY** conforme a RFC 2119, traducidas así:
 
 - **MUST (obligatorio):** la regla es vinculante. Un PR que no cumpla se bloquea en revisión.
-- **SHOULD (recomendado):** la regla se cumple salvo justificación técnica documentada como ADR.
+- **SHOULD (recomendado):** la regla se cumple salvo justificación técnica razonable documentada en el PR (descripción o comentario en el código con el motivo). No exige ADR salvo que así lo indique el §específico.
 - **MAY (permitido):** la regla describe una práctica válida pero no prescriptiva; el equipo decide caso por caso.
 
 Los términos **PROHIBIDO** o **NUNCA** indican líneas rojas absolutas: ningún caso justifica transgredirlas sin modificar primero este documento.
+
+### 0.1 Política unificada de ADR
+
+Para evitar fricción innecesaria, un **ADR (Architecture Decision Record)** en `/backend/docs/adr/NNNN-titulo-corto.md` es **obligatorio** únicamente en los siguientes casos:
+
+1. Modificar, añadir o eliminar una regla de este documento.
+2. Transgredir una línea roja de **§18** (si se considera estrictamente inevitable, el ADR debe preceder al PR y contar con aprobación del arquitecto).
+3. Cambiar un componente del **stack tecnológico** (§5) o introducir una dependencia NuGet fuera del stack aprobado.
+4. Desactivar o relajar una regla de **§12** (seguridad / OWASP).
+5. Introducir un patrón transversal nuevo que afecte a múltiples microservicios (ej. event bus, cache distribuido, nuevo middleware global).
+
+Para el resto de desviaciones (excepciones puntuales a un **SHOULD**, umbrales numéricos configurables, decisiones tácticas de implementación) basta con **justificación en el PR**: descripción, comentario en el código donde aplique y, si la decisión se repetirá, apunte en la guía interna del servicio. No se requiere ADR.
+
+> **Rationale.** Un documento con ADR obligatorio por cada desviación trivial vacía el significado de SHOULD y convierte al equipo en tramitador. Los ADR deben reservarse para decisiones que un nuevo miembro del equipo necesitaría conocer meses después.
 
 ---
 
@@ -54,9 +68,8 @@ En caso de conflicto entre este documento y los anteriores, los documentos de AN
 
 Este documento es un artefacto vivo. Los cambios se proponen vía Pull Request al repositorio donde vive.
 
-- **Cambio mayor** (nueva sección, cambio de un patrón obligatorio, nueva línea roja) **MUST** ser aprobado por el arquitecto de software del proyecto y el líder técnico de backend.
-- **Cambio menor** (aclaraciones, ejemplos, correcciones) **MAY** aprobarse por un solo revisor senior.
-- **Cada cambio significativo MUST** registrarse como ADR en `/backend/docs/adr/NNNN-titulo-corto.md` antes de modificar este documento.
+- **Cambio mayor** (nueva sección, cambio de un patrón obligatorio, nueva línea roja) **MUST** ser aprobado por el arquitecto de software del proyecto y el líder técnico de backend, y **MUST** registrarse como ADR antes de mergear el PR que lo introduce (ver §0.1).
+- **Cambio menor** (aclaraciones, ejemplos, correcciones tipográficas, reformulaciones que no alteran la semántica de una regla) **MAY** aprobarse por un solo revisor senior, **sin ADR**.
 
 ### 2.2 Versionado
 
@@ -69,11 +82,12 @@ El código existente al momento de un cambio Major **SHOULD** adecuarse dentro d
 
 ### 2.3 Excepciones
 
-Cualquier excepción a una regla **MUST** o **SHOULD** de este documento **MUST**:
+Las excepciones se manejan según la política unificada de **§0.1**:
 
-1. Registrarse como ADR.
-2. Referenciarse en el código donde se aplica (comentario con enlace al ADR).
-3. Revisarse en el siguiente refinamiento de arquitectura.
+- **Excepciones a reglas MUST fuera de §13 y §18**, o excepciones a cualquier SHOULD: se justifican en el PR (descripción y comentario en el código). No requieren ADR.
+- **Excepciones a reglas MUST de §13 (seguridad) o a líneas rojas de §18**: requieren ADR previo + aprobación del arquitecto, conforme a §0.1.
+- Toda excepción **MUST** dejar trazabilidad en el código donde se aplica (comentario con el motivo o enlace al ADR cuando aplique).
+- Las excepciones a reglas MUST de §13/§19 se revisan en el siguiente refinamiento de arquitectura para decidir si se cierran o se elevan a cambio formal del documento.
 
 ---
 
@@ -92,7 +106,69 @@ El backend de GOP 360° **MUST** ser gobernado por los siguientes principios, en
 
 ---
 
-## 4. Stack tecnológico
+## 4. Proceso de especificación — Spec-Driven Development
+
+Antes de escribir una línea de código, cada feature **MUST** tener una carpeta de spec completa. La spec es la fuente de verdad del requerimiento — no la HU en papel ni la memoria del equipo.
+
+> La spec debe ser suficientemente clara para humanos y agentes. No debe ser literatura; debe poder transformarse en tareas, tests y PRs.
+
+### 4.1 Estructura obligatoria
+
+Por cada feature se crea la carpeta `specs/NNN-nombre-feature/` en el repositorio del servicio correspondiente, con los siguientes artefactos:
+
+| Artefacto | Contenido | Obligatoriedad |
+|---|---|---|
+| `spec.md` | **QUÉ**: historias de usuario priorizadas, criterios de aceptación (Given/When/Then), success criteria medibles y supuestos. | MUST |
+| `plan.md` | **CÓMO**: stack técnico, estructura de archivos, decisiones de diseño, bloques de implementación. | MUST |
+| `tasks.md` | **CUÁNDO**: tareas atómicas con checkboxes, IDs (T001…), marcadores `[P]` para paralelas y `[US*]` por historia. | MUST |
+| `contracts/api-contract.yaml` | Contrato OpenAPI 3.x completo: schemas, ejemplos y códigos de respuesta. Fuente de verdad del contrato HTTP. | MUST cuando hay endpoints nuevos o modificados |
+| `checklists/requirements.md` | Checklist de calidad de la spec antes de planificar. | MUST |
+| `data-model.md` | Entidades nuevas o modificadas: campos, tipos, restricciones, relaciones. Coherente con el modelo global. | MUST cuando hay cambios de BD |
+| `research.md` | Decisiones técnicas, alternativas evaluadas, constraints descubiertos durante la fase de investigación. | SHOULD |
+
+### 4.2 Reglas de la spec
+
+**MUST:** la spec (`spec.md`) existe y el checklist `checklists/requirements.md` está completo **antes** de arrancar la fase de construcción. Una spec incompleta bloquea el inicio del desarrollo — no hay excepción.
+
+**MUST:** los criterios de aceptación en `spec.md` usan formato Given/When/Then con datos concretos. Un criterio como *"el sistema maneja errores correctamente"* no es válido — debe especificar qué error, qué input y qué response exacto.
+
+**MUST:** `contracts/api-contract.yaml` es un OpenAPI 3.x válido y completo con schemas, ejemplos y códigos de respuesta. El agente de construcción lo usa como fuente — si está incompleto, el código generado estará incompleto.
+
+**MUST:** `data-model.md` referencia explícitamente las entidades EF Core que se van a crear o modificar, con los nombres exactos que usará el código.
+
+**MUST:** `tasks.md` organiza las tareas por historia de usuario. Cada tarea incluye ID secuencial (T001, T002…), ruta de archivo exacta, y marcador `[P]` si es paralelizable.
+
+**PROHIBIDO** comenzar a codear una feature sin spec aprobada. Si el requerimiento cambia durante el desarrollo, `spec.md` se actualiza primero y el código después.
+
+### 4.3 Ubicación en el repositorio
+
+```
+<servicio>/
+  specs/
+    NNN-nombre-feature/          ← NNN secuencial (001, 002…), nombre en kebab-case
+      spec.md                    ← QUÉ: historias de usuario y criterios de aceptación
+      plan.md                    ← CÓMO: stack, arquitectura, estructura de archivos
+      tasks.md                   ← CUÁNDO: tareas atómicas con checkboxes
+      contracts/
+        api-contract.yaml        ← Contrato OpenAPI (obligatorio si hay endpoints)
+      checklists/
+        requirements.md          ← Checklist de calidad de la spec
+      data-model.md              ← Opcional: entidades y relaciones (si hay cambios de BD)
+      research.md                ← Opcional: decisiones técnicas e investigación
+    NNN-nombre-feature-2/
+      ...
+```
+
+### 4.4 Relación con otros artefactos
+
+- Los criterios de aceptación de `spec.md` son la fuente directa de los integration tests (§15.3).
+- `contracts/api-contract.yaml` alimenta la configuración de Swashbuckle (§10.8) y es el contrato que el QA Agent verifica en la fase de validación.
+- `research.md` documenta las decisiones que en versiones anteriores requerían un ADR separado; si la decisión es transversal a múltiples microservicios, se eleva a ADR (§0.1).
+- La spec se enlaza desde `CLAUDE.md` del servicio (entre los marcadores `<!-- SPECKIT START -->` y `<!-- SPECKIT END -->`) para que el agente tenga contexto de la feature activa.
+
+---
+
+## 5. Stack tecnológico
 
 Este stack es vinculante. Cambios requieren ADR y aprobación de arquitectura.
 
@@ -103,22 +179,27 @@ Este stack es vinculante. Cambios requieren ADR y aprobación de arquitectura.
 | Framework Web | ASP.NET Core | 10 | — |
 | ORM | Entity Framework Core | 10 | Con proveedor SQL Server |
 | Base de datos | SQL Server / SQL Azure | 2022 | Versión fijada por solicitud del cliente. Incluye compatibilidad on-premise |
-| Dispatcher CQRS | .NET base + dispatchers propios | — | Implementación propia en `Anh.Gop.Shared.Cqrs`. Sin dependencia externa de mediador. Ver §10.1 y postura "lean base" en §10.1.1. |
+| Dispatcher CQRS | .NET base + dispatchers propios | — | Implementación propia en `Anh.Gop.Shared.Cqrs`. Sin dependencia externa de mediador. Ver §11.1 y postura "lean base" en §11.1.1. |
 | Validación | FluentValidation | 11+ | Obligatorio en DTOs |
 | Logging | Serilog | 3+ | Structured logging |
 | Documentación API | Swashbuckle (OpenAPI) | 6+ | Obligatorio |
+| Documentación de desarrollo | DocFX | 2+ | Genera sitio estático desde XML docs + Markdown. Ver §10.8. |
+| Versionado de API | Asp.Versioning.Http + Asp.Versioning.Mvc.ApiExplorer | 8+ | Reemplazo oficial de Microsoft.AspNetCore.Mvc.Versioning (deprecado). Ver §10.1. |
 | Migraciones BD | DbUp | 5+ | Sobre EF Core migrations |
 | Testing unitario | xUnit | 2+ | — |
+| Testing de arquitectura | NetArchTest.Rules | 2+ | Obligatorio. Verifica reglas estructurales del código en CI. Ver §15.6. |
 | Testing BD | tSQLt | — | Definido por Estándar de Codificación |
 | Analyzers | StyleCop.Analyzers + Microsoft.CodeAnalysis.NetAnalyzers | — | Definido por Estándar de Codificación |
-| Auditoría automática | Audit.NET + Audit.EntityFramework.Core | — | Obligatorio para escribir `audit.AuditLog`. Reemplaza interceptores EF manuales. Ver §11.6. |
+| Auditoría automática | Audit.NET + Audit.EntityFramework.Core | — | Obligatorio para escribir `audit.AuditLog`. Reemplaza interceptores EF manuales. Ver §12.6. |
 | Cache | In-Process (MemoryCache) | — | V1 local. Redis queda para V2 si se requiere. |
-| Identity framework | ASP.NET Core Identity | 10 | Base infraestructural de `gop.identity` (ver §5.2 y `data-model.md` §9). Provee `UserManager`, `RoleManager`, password hashing, lockout, tokens y stores EF Core. |
-| Hardening de seguridad | `Anh.Gop.Shared.Security` | — | Middleware y helpers para cumplimiento automático de OWASP Top 10 (security headers, HSTS, antiforgery, rate limiting, SSRF handler, secrets validator, deserialización segura). Ver §12. |
-| Rate limiting | `Microsoft.AspNetCore.RateLimiting` | 10 (built-in) | Policies predefinidas (`auth-strict`, `api-standard`, `export-heavy`, `read-standard`) en shared lib. Ver §12.5. |
-| Analyzers de seguridad | `Microsoft.CodeAnalysis.NetAnalyzers` (categoría Security) + `SecurityCodeScan` | — | Warning-as-error en `Directory.Build.props`. Ver §12.13. |
-| Supply chain scan | `dotnet list package --vulnerable` + Dependabot/Renovate + Trivy (Docker) + SBOM CycloneDX | — | Automatizado en CI. Ver §12.12. |
-| Reverse Proxy | nginx | — | On-premise. Ver §17. |
+| Identity framework | ASP.NET Core Identity | 10 | Base infraestructural de `gop.identity` (ver §6.2 y `data-model.md` §10). Provee `UserManager`, `RoleManager`, password hashing, lockout, tokens y stores EF Core. |
+| Hardening de seguridad | `Anh.Gop.Shared.Security` | — | Middleware y helpers para cumplimiento automático de OWASP Top 10 (security headers, HSTS, antiforgery, rate limiting, SSRF handler, secrets validator, deserialización segura). Ver §13. |
+| Rate limiting | `Microsoft.AspNetCore.RateLimiting` | 10 (built-in) | Policies predefinidas (`auth-strict`, `api-standard`, `export-heavy`, `read-standard`) en shared lib. Ver §13.5. |
+| Analyzers de seguridad | `Microsoft.CodeAnalysis.NetAnalyzers` (categoría Security) + `SecurityCodeScan` | — | Warning-as-error en `Directory.Build.props`. Ver §13.13. |
+| Supply chain scan | `dotnet list package --vulnerable` + Dependabot/Renovate + Trivy (Docker) + SBOM CycloneDX | — | Automatizado en CI. Ver §13.12. |
+| Reverse Proxy | nginx | — | On-premise. Ver §18. |
+| OIDC / Token Server | Duende IdentityServer | 7+ | Usado en `gop-idp` como servidor OIDC/OAuth2 completo. Simula IdP externo en dev/test; en producción se configura federación con AD de ANH. Licencia Community (revenue < $1M). Ver §8.1.1 y §6.2. |
+| Log aggregation | Seq | 2024+ | Receptor de logs estructurados de Serilog. Interno — no expuesto vía nginx. Acceso restringido a administradores. Ver §18.4. |
 
 **PROHIBIDO** introducir dependencias fuera de este stack sin ADR aprobado.
 
@@ -130,37 +211,40 @@ Toda dependencia NuGet **MUST** tener licencia compatible con uso en software de
 - **Permitidas con evaluación:** LGPL (solo dynamic linking), MPL 2.0, EPL 2.0. Requieren ADR documentando cómo se consume.
 - **PROHIBIDAS** salvo aprobación explícita de arquitectura + OTI: GPL v2, GPL v3, AGPL, SSPL, licencias comerciales no revisadas, licencias "source-available" con restricciones de uso.
 
-**MUST:** el pipeline de CI ejecuta validación automática de licencias en cada build usando `dotnet-project-licenses` (o equivalente). El build **MUST** fallar si detecta una licencia no permitida.
+**MUST:** el pipeline de CI ejecuta validación automática de licencias en cada build usando `dotnet-project-licenses` (o equivalente). El build **MUST** fallar si detecta una licencia no permitida. El CI es la única fuente de verdad para el cumplimiento — no se exige duplicar la verificación manualmente en el PR.
 
-**MUST:** toda adición de dependencia en PR requiere comentario del desarrollador indicando licencia. El revisor valida antes de aprobar.
+**MAY:** el desarrollador incluya en el PR una nota sobre la licencia de la dependencia añadida si considera que facilita la revisión (útil para dependencias nuevas o poco conocidas). No es obligatorio; CI lo cubre.
 
-**Nota sobre mediadores:** este proyecto **no** usa MediatR ni equivalentes comerciales en V1. El patrón CQRS se implementa con dispatchers propios en `Anh.Gop.Shared.Cqrs` (ver §10.1 y §19.7). La adopción de un mediador externo se evalúa solo si se cumplen los criterios de §10.1.1.
+**Nota sobre mediadores:** este proyecto **no** usa MediatR ni equivalentes comerciales en V1. El patrón CQRS se implementa con dispatchers propios en `Anh.Gop.Shared.Cqrs` (ver §11.1 y §20.7). La adopción de un mediador externo se evalúa solo si se cumplen los criterios de §11.1.1.
 
 ---
 
-## 5. Arquitectura de alto nivel
+## 6. Arquitectura de alto nivel
 
-### 5.1 Patrón arquitectónico
+### 6.1 Patrón arquitectónico
 
 El backend **MUST** seguir **Clean Architecture** con **CQRS** explícito, conforme a la sección 2.3 del *Documento de Estándares de Codificación*. Los bounded contexts se organizan como **microservicios independientes**, alineados con los esquemas del modelo de datos.
 
-### 5.2 Microservicios planeados para V1
+### 6.2 Microservicios planeados para V1
 
 El sistema V1 se despliega como los siguientes servicios independientes, cada uno con su propio repositorio y ciclo de release:
 
 | Servicio | Responsabilidad | Esquemas BD principales |
 |---|---|---|
-| `gop.identity` | Autenticación, usuarios, roles, permisos, sesiones. Construido sobre **ASP.NET Core Identity** (UserManager, RoleManager, password hashing, lockout, tokens) con stores EF Core sobre el esquema `identity`. | `identity` |
-| `gop.core` | Operadores, contratos, campos, bloques, clusters, catálogos | `core`, `catalog` |
-| `gop.operations` | Pozos, ciclo de vida, formas Serie 100, IDOP/IDOC | `ops` |
-| `gop.production` | Producción, formas Serie 200, balances, inyección | `prod` |
-| `gop.procedures` | Trámites, workflow, firmas, PDFs, validaciones espaciales | `procedure`, `workflow` |
-| `gop.integration` | Staging, homologación, sincronización con externos | `integration` |
-| `gop.audit` | **Consulta y gestión** del log de auditoría (búsqueda, exportación, retención, particionado). **No** es hub de escritura: cada microservicio escribe su propia auditoría localmente vía Audit.NET (ver §11.6). | `audit` |
+| `gop-idp` | Servidor OIDC/OAuth2 basado en **Duende IdentityServer**. En dev/test simula el IdP externo (AD de ANH); en producción se configura federación con el AD real. Expone Discovery endpoint (`/.well-known/openid-configuration`), token endpoint y signing keys RS256. **No gestiona usuarios de dominio GOP** — solo emite tokens OIDC estándar. | — (sin esquema propio; usuarios de prueba en memoria en dev) |
+| `gop-identity` | Gestión de usuarios, roles, permisos y sesiones del dominio GOP. Construido sobre **ASP.NET Core Identity** (UserManager, RoleManager, password hashing, lockout) con stores EF Core. Actúa como **Relying Party**: valida el `id_token` emitido por `gop-idp` (o el IdP externo real en producción) y aplica **Token Exchange (RFC 8693)** para emitir el **JWT interno GOP** con claims de dominio (ver §8.1.1). | `identity` |
+| `gop-core` | Operadores, contratos, campos, bloques, clusters, catálogos | `core`, `catalog` |
+| `gop-operations` | Pozos, ciclo de vida, formas Serie 100, IDOP/IDOC | `ops` |
+| `gop-production` | Producción, formas Serie 200, balances, inyección | `prod` |
+| `gop-procedures` | Trámites, workflow, firmas, PDFs, validaciones espaciales | `procedure`, `workflow` |
+| `gop-integration` | Staging, homologación, sincronización con externos | `integration` |
+| `gop-audit` | **Consulta y gestión** del log de auditoría (búsqueda, exportación, retención, particionado). **No** es hub de escritura: cada microservicio escribe su propia auditoría localmente vía Audit.NET (ver §12.6). | `audit` |
 
-**Nota:** `gop.procedures` incluye al motor de workflow porque conceptualmente son un binomio en V1. Si en el futuro el motor se reutiliza para flujos no-regulatorios, se extraerá a servicio propio.
+**Notas:**
+- `gop.procedures` incluye al motor de workflow porque conceptualmente son un binomio en V1. Si en el futuro el motor se reutiliza para flujos no-regulatorios, se extraerá a servicio propio.
+- La separación `gop-idp` / `gop-identity` permite reemplazar `gop-idp` por el AD real de ANH en producción **sin modificar `gop-identity` ni ningún microservicio consumidor** — solo cambia la URL del Discovery endpoint en configuración.
 
-### 5.3 Estructura de proyectos dentro de cada servicio
+### 6.3 Estructura de proyectos dentro de cada servicio
 
 Cada microservicio **MUST** tener la siguiente estructura de proyectos .NET:
 
@@ -183,15 +267,15 @@ Dependencias entre proyectos (regla inviolable):
 
 **PROHIBIDO** que `Domain` dependa de `Application` o `Infrastructure`. **PROHIBIDO** que `Application` dependa de `Infrastructure` (usa interfaces).
 
-### 5.4 Shared Libraries
+### 6.4 Shared Libraries
 
 Los componentes transversales viven en NuGet packages internos versionados:
 
 | Package | Contenido | Consumido por |
 |---|---|---|
 | `Anh.Gop.Shared.Auth` | Middleware de autenticación, policies, requirements, clientes de Identity | Todos |
-| `Anh.Gop.Shared.Security` | Hardening OWASP Top 10 automático: security headers, HSTS, cookies seguras, antiforgery, rate limiting, `SsrfProtectionHandler`, `StartupSecretsValidator`, `UseExceptionHandler` sanitizado, `JsonSerializerOptions` defaults, `LdapFilterEncoder`. Se activa con `AddGopSecurityHardening()` / `UseGopSecurityHardening()`. Ver §12. | Todos |
-| `Anh.Gop.Shared.Cqrs` | Interfaces (`ICommand`, `IQuery`, handlers), dispatchers, decoradores y `AddGopCqrs()`. Sin dependencias externas de mediador. Ver §10.1 y §19.7. | Todos |
+| `Anh.Gop.Shared.Security` | Hardening OWASP Top 10 automático: security headers, HSTS, cookies seguras, antiforgery, rate limiting, `SsrfProtectionHandler`, `StartupSecretsValidator`, `UseExceptionHandler` sanitizado, `JsonSerializerOptions` defaults, `LdapFilterEncoder`. Se activa con `AddGopSecurityHardening()` / `UseGopSecurityHardening()`. Ver §13. | Todos |
+| `Anh.Gop.Shared.Cqrs` | Interfaces (`ICommand`, `IQuery`, handlers), dispatchers, decoradores y `AddGopCqrs()`. Sin dependencias externas de mediador. Ver §11.1 y §20.7. | Todos |
 | `Anh.Gop.Shared.Contracts` | DTOs y eventos compartidos entre servicios | Todos |
 | `Anh.Gop.Shared.Infrastructure` | Serilog config, health checks base, Swagger config, `AuditConfiguration` (Audit.NET) | Todos |
 | `Anh.Gop.Shared.ResultPattern` | Tipo `Result<T>` y helpers | Todos |
@@ -203,11 +287,11 @@ Las shared libraries **MUST** versionarse semánticamente. Cambios breaking requ
 
 ---
 
-## 6. Arquitectura multitenant con host (ANH)
+## 7. Arquitectura multitenant con host (ANH)
 
 Esta sección es **central** para GOP y sus reglas son vinculantes en toda query, endpoint y servicio.
 
-### 6.1 Modelo conceptual
+### 7.1 Modelo conceptual
 
 GOP 360° implementa el patrón **Multitenancy with Regulator-as-Host**:
 
@@ -215,7 +299,7 @@ GOP 360° implementa el patrón **Multitenancy with Regulator-as-Host**:
 - **Host** es la ANH. Opera "al otro lado de la ventanilla" — no es un tenant más, es el fiscalizador con visibilidad transversal controlada sobre todos los tenants.
 - **Socios de contrato** (`ContractPartner`) son operadores que participan en contratos cuyo titular es otro operador. El socio es su propio tenant; su acceso al contrato del titular se modela mediante asignaciones explícitas de `UserRole` con `ContractId` del contrato externo.
 
-### 6.2 Identificación de tenant
+### 7.2 Identificación de tenant
 
 **TODO** usuario **MUST** pertenecer a exactamente uno de los siguientes contextos:
 
@@ -224,12 +308,12 @@ GOP 360° implementa el patrón **Multitenancy with Regulator-as-Host**:
 
 El tenant se resuelve al autenticar y **MUST** incluirse en el JWT como claim. **PROHIBIDO** cambiar el tenant de un usuario existente — si cambia su relación laboral, se desactiva y se crea uno nuevo.
 
-### 6.3 Segregación de datos
+### 7.3 Segregación de datos
 
 **MUST** para toda query que retorna datos de entidades de tenant:
 
 - Usuarios operador ven **solo** datos de su `TenantId`.
-- Usuarios ANH ven datos de **todos** los tenants, posiblemente filtrados por scope fino adicional (ver §7).
+- Usuarios ANH ven datos de **todos** los tenants, posiblemente filtrados por scope fino adicional (ver §8).
 - La segregación se impone por una de estas dos vías:
 
 **Vía A — Global Query Filter de EF Core (para tenant simple):**
@@ -243,7 +327,7 @@ El handler recibe `ICurrentUserContext` inyectado y aplica el filtro de forma ex
 
 **PROHIBIDO** escribir una query sobre entidad de tenant sin aplicar alguna de las dos vías. El PR será bloqueado.
 
-### 6.4 Bypass del filtro
+### 7.4 Bypass del filtro
 
 Hay escenarios legítimos donde el host ANH debe ver todos los tenants (ej. dashboard nacional, listados consolidados). Para estos:
 
@@ -253,7 +337,15 @@ Hay escenarios legítimos donde el host ANH debe ver todos los tenants (ej. dash
 
 **PROHIBIDO** bypass genérico sin validación de tipo de tenant.
 
-### 6.5 Columna `TenantId` en el modelo
+### 7.5 Tipo de clave primaria
+
+Todas las entidades de dominio **MUST** usar `int` como tipo de clave primaria (identity autoincremental en SQL Server). **PROHIBIDO** usar `Guid` como PK salvo que exista una razón técnica documentada en ADR (ej. integración con sistema externo que exige GUID, o entidad distribuida generada en cliente sin roundtrip al servidor).
+
+**Rationale:** `int` reduce tamaño de índices, mejora performance en JOINs, simplifica depuración y es suficiente para la escala de V1. La generación de IDs siempre ocurre en el servidor (base de datos), nunca en el cliente.
+
+**Excepción — tablas PPDM 3.9 (ADR-0001):** las tablas del estándar PPDM 3.9 en el schema `catalog` usan `varchar(40)` como clave primaria (`BA_ID`, `UWI`, etc.) conforme al estándar. Esta es la única excepción admitida a la regla `int`. Las tablas de extensión GOP que referencian tablas PPDM (ej. `BA_AUTH_CONFIG`) conservan `int` como PK propio y usan `varchar(40)` solo como FK hacia PPDM. Ver §20.5.1.
+
+### 7.6 Columna `TenantId` en el modelo
 
 Todas las entidades de tenant **MUST** tener columna `OperatorId` o equivalente que cumple rol de `TenantId`. Esta columna:
 
@@ -263,12 +355,12 @@ Todas las entidades de tenant **MUST** tener columna `OperatorId` o equivalente 
 
 ---
 
-## 7. Autenticación y autorización
+## 8. Autenticación y autorización
 
-### 7.1 Autenticación
+### 8.1 Autenticación
 
 **MUST:**
-- SSO contra el IdP externo designado por ANH (Active Directory corporativo u otro que ANH confirme — ver §7.1.1), conforme mandato OTI.
+- SSO contra el IdP externo designado por ANH (Active Directory corporativo u otro que ANH confirme — ver §8.1.1), conforme mandato OTI.
 - MFA obligatorio para todos los usuarios internos (ANH y operadoras) cuya identidad se gestione en el IdP externo.
 - Tokens JWT firmados con algoritmo asimétrico (RS256 o ES256).
 - Expiración corta del access token (30–60 minutos).
@@ -281,13 +373,28 @@ Todas las entidades de tenant **MUST** tener columna `OperatorId` o equivalente 
 - Expiración superior a 60 minutos para access tokens.
 - Almacenar tokens en logs, auditoría o mensajes.
 
-### 7.1.1 Modelo de identidad — IdP federado + JWT de aplicación (Token Exchange)
+### 8.1.1 Modelo de identidad — gop-idp + Token Exchange + JWT de aplicación
 
 GOP aplica el patrón **Token Exchange** (RFC 8693 — *OAuth 2.0 Token Exchange*), que separa explícitamente **autenticación** (quién es el usuario) de **autorización de dominio** (qué puede hacer dentro de GOP):
 
-1. **IdP externo** (AD corporativo ANH u otro proveedor que ANH confirme) autentica al usuario vía **OIDC**, aplica MFA si corresponde y emite un `id_token` estándar.
-2. **`gop.identity`** actúa como **Relying Party (RP)**: valida el `id_token` (firma, `iss`, `aud`, `exp`, `nonce`), identifica al `User` correspondiente en el modelo de dominio GOP y **emite su propio JWT de aplicación** con los claims de dominio definidos en §7.2.
-3. **Frontend y microservicios GOP** consumen **únicamente** el JWT interno emitido por `gop.identity`. El `id_token` o `access_token` del IdP externo no se propaga.
+1. **`gop-idp`** (Duende IdentityServer) autentica al usuario vía **OIDC**, aplica MFA si corresponde y emite un `id_token` estándar. En dev/test opera como simulador del IdP externo; en producción se reemplaza por el AD corporativo de ANH sin cambios en `gop-identity` ni en los microservicios consumidores.
+2. **`gop-identity`** actúa como **Relying Party (RP)**: consulta el Discovery endpoint de `gop-idp` para obtener la clave pública RS256, valida el `id_token` (`iss`, `aud`, `exp`, `nonce`), identifica al `User` en el modelo de dominio GOP y **emite su propio JWT de aplicación** con los claims de dominio definidos en §8.2.
+3. **Frontend y microservicios GOP** consumen **únicamente** el JWT interno emitido por `gop-identity`. El `id_token` de `gop-idp` no se propaga.
+
+**Regla de no-hardcoding de URLs:**
+`gop-identity` **MUST** resolver la URL del token endpoint y la clave pública de firma usando el **Discovery endpoint** (`/.well-known/openid-configuration`) de `gop-idp`, nunca hardcodeando rutas. Esto garantiza que apuntar a un IdP diferente (AD real en producción) sea un cambio de configuración, no de código.
+
+```csharp
+// CORRECTO — resuelve endpoints via Discovery
+builder.Services.AddAuthentication()
+    .AddOpenIdConnect(options => {
+        options.Authority = configuration["Idp:Authority"]; // ej. https://idp.gop.internal
+        // el SDK descarga /.well-known/openid-configuration automáticamente
+    });
+
+// PROHIBIDO — hardcoding del token endpoint
+options.TokenEndpoint = "https://idp.gop.internal/connect/token"; // ❌
+```
 
 Este patrón es estándar de industria, está explícitamente contemplado en:
 
@@ -300,30 +407,32 @@ Este patrón es estándar de industria, está explícitamente contemplado en:
 
 | Responsabilidad | Dueño | Por qué |
 |---|---|---|
-| Autenticación primaria (credencial, MFA, SSO) | IdP externo (AD ANH) | Gobernanza central de identidades del Estado |
-| Emisión de `id_token` OIDC | IdP externo | Prueba criptográfica de autenticación |
-| Emisión de **JWT de aplicación GOP** | `gop.identity` | GOP es dueño del modelo de dominio (roles, scopes, tenants, contratos) |
-| Claims de autorización (`roles`, `permissions`, `tenant_id`, `assigned_contract_ids`) | `gop.identity` | Son del dominio GOP, no del IdP |
-| Revocación de sesión GOP | `gop.identity` | Evento de negocio propio |
+| Autenticación primaria (credencial, MFA, SSO) | `gop-idp` (dev) / AD ANH (prod) | Gobernanza de identidades; reemplazable por configuración |
+| Emisión de `id_token` OIDC | `gop-idp` (dev) / AD ANH (prod) | Prueba criptográfica de autenticación |
+| Discovery endpoint y signing keys | `gop-idp` (dev) / AD ANH (prod) | Descubierto automáticamente — sin hardcoding |
+| Emisión de **JWT de aplicación GOP** | `gop-identity` | GOP es dueño del modelo de dominio (roles, scopes, tenants, contratos) |
+| Claims de autorización (`roles`, `permissions`, `tenant_id`, `assigned_contract_ids`) | `gop-identity` | Son del dominio GOP, no del IdP |
+| Revocación de sesión GOP | `gop-identity` | Evento de negocio propio |
 
 **PROHIBIDO:**
-- Propagar el `access_token` o `id_token` del IdP externo a microservicios GOP — sólo circula el JWT interno.
-- Incluir claims de autorización específicos de GOP en el `id_token` del IdP externo (rompe la separación IdP ≠ Authorization Server de dominio).
-- Que microservicios GOP validen contra el IdP externo — validan **sólo** contra la clave pública de `gop.identity`.
+- Propagar el `access_token` o `id_token` de `gop-idp` a microservicios GOP — sólo circula el JWT interno de `gop-identity`.
+- Incluir claims de autorización específicos de GOP en el `id_token` de `gop-idp` (rompe la separación IdP ≠ Authorization Server de dominio).
+- Que microservicios GOP validen contra `gop-idp` directamente — validan **sólo** contra la clave pública de `gop-identity`.
+- Hardcodear URLs de endpoints de `gop-idp` — siempre usar Discovery.
 
-#### 7.1.1.1 Usuarios locales (modo transitorio y fallback operativo)
+#### 8.1.1.1 Usuarios locales (modo transitorio y fallback operativo)
 
-GOP usa **ASP.NET Core Identity** como capa infraestructural de `gop.identity` (ver §4 y §5.2). Esto habilita, **por configuración y por diseño**, la capacidad de gestionar **usuarios locales con credenciales propias** en paralelo al flujo federado OIDC. Esta capacidad está presente **intencionalmente** para cubrir tres escenarios:
+GOP usa **ASP.NET Core Identity** como capa infraestructural de `gop.identity` (ver §5 y §6.2). Esto habilita, **por configuración y por diseño**, la capacidad de gestionar **usuarios locales con credenciales propias** en paralelo al flujo federado OIDC. Esta capacidad está presente **intencionalmente** para cubrir tres escenarios:
 
-1. **Testing funcional inicial (pre-federación):** mientras ANH confirma formalmente el IdP externo a utilizar, el equipo de desarrollo y los testers de aceptación operan con **usuarios locales administrados por ASP.NET Core Identity** para ejecutar pruebas funcionales, integración y aceptación. Cumplen las mismas políticas de password, lockout y MFA definidas en §12.6.
+1. **Testing funcional inicial (pre-federación):** mientras ANH confirma formalmente el IdP externo a utilizar, el equipo de desarrollo y los testers de aceptación operan con **usuarios locales administrados por ASP.NET Core Identity** para ejecutar pruebas funcionales, integración y aceptación. Cumplen las mismas políticas de password, lockout y MFA definidas en §13.6.
 2. **Usuarios fuera del dominio de identidad de ANH:** operadores, contratistas asociados, socios de contrato u otros actores externos que **no** tengan cuenta en el IdP administrado por ANH. Para ellos `gop.identity` mantiene credenciales locales hasta que exista un mecanismo de federación alternativo (p.ej. Azure AD B2C, Gov.co, un IdP de operadoras).
 3. **Cuentas técnicas y de servicio:** integraciones, jobs batch y cuentas administrativas de bootstrap (el primer `ANH_Admin` tiene que existir antes de cualquier federación).
 
 **MUST:**
-- Los usuarios locales cumplen **íntegramente** las políticas de §12.6 (password mínimo 12, complejidad, historial 5, expiración 90 días, lockout dual, MFA obligatoria para roles sensibles).
+- Los usuarios locales cumplen **íntegramente** las políticas de §13.6 (password mínimo 12, complejidad, historial 5, expiración 90 días, lockout dual, MFA obligatoria para roles sensibles).
 - Cada `User` en `identity` lleva columna `AuthenticationSource` (`External` | `Local`) que documenta el origen de su autenticación.
-- El JWT de aplicación emitido por `gop.identity` es **idéntico en forma y claims** (§7.2) sea cual sea el origen de autenticación. Los microservicios consumidores **no** distinguen usuarios externos vs. locales — sólo ven el JWT interno.
-- Las credenciales locales se almacenan con el hasher default de ASP.NET Core Identity (PBKDF2 HMAC-SHA512, ≥100k iteraciones — ver §12.8).
+- El JWT de aplicación emitido por `gop.identity` es **idéntico en forma y claims** (§8.2) sea cual sea el origen de autenticación. Los microservicios consumidores **no** distinguen usuarios externos vs. locales — sólo ven el JWT interno.
+- Las credenciales locales se almacenan con el hasher default de ASP.NET Core Identity (PBKDF2 HMAC-SHA512, ≥100k iteraciones — ver §13.8).
 
 **SHOULD:**
 - Preferir federación OIDC cuando el usuario **sí** exista en el IdP de ANH — los usuarios locales son excepción, no regla.
@@ -345,7 +454,7 @@ Entonces el flag `AllowLocalAuthentication` en configuración de `gop.identity` 
 
 Hasta que esa confirmación exista, la coexistencia federación + local es el modelo operativo por defecto.
 
-### 7.2 Contenido del JWT
+### 8.2 Contenido del JWT
 
 El JWT emitido por `gop.identity` **MUST** contener los siguientes claims:
 
@@ -355,15 +464,15 @@ El JWT emitido por `gop.identity` **MUST** contener los siguientes claims:
 | `tenant_id` | string | OperatorId del tenant del usuario, o `"anh"` para host |
 | `tenant_type` | string | `"operator"` \| `"anh"` |
 | `roles` | string[] | Códigos de rol |
-| `permissions` | string[] | Capabilities (ver §7.5) |
-| `assigned_contract_ids` | long[] | Lista de IDs de contratos asignados (ver §7.4) |
+| `permissions` | string[] | Capabilities (ver §8.5) |
+| `assigned_contract_ids` | long[] | Lista de IDs de contratos asignados (ver §8.4) |
 | `contracts_truncated` | bool | `true` si la lista excede límite |
 | `license_validated_until` | datetime? | Fecha hasta la que la matrícula profesional está validada (null si no aplica) |
 | `exp`, `iat`, `nbf`, `iss`, `aud` | — | Estándar JWT |
 
 **SHOULD:** el JWT total **no debe exceder 8 KB**. Si se aproxima, revisar estructura.
 
-#### 7.2.1 Claims prohibidos en el JWT
+#### 8.2.1 Claims prohibidos en el JWT
 
 El JWT es **firmado pero no cifrado** por defecto — cualquier portador del token puede decodificarlo en base64. Por tanto está **PROHIBIDO** incluir en el JWT:
 
@@ -376,13 +485,13 @@ El JWT es **firmado pero no cifrado** por defecto — cualquier portador del tok
 | Datos mutables de alta frecuencia | Contadores de operación, timestamps de última acción, saldos | Fuerzan refresh innecesario; el claim queda obsoleto entre emisiones |
 | Estructuras grandes no acotadas | Listas sin límite superior, árboles profundos | Riesgo de JWT >8 KB y problemas de performance en headers |
 
-**Regla general:** el JWT transporta **identidad + claims mínimos de autorización suficientes para decidir acceso en la capa de policies (§7.3 capa 3)**. Cualquier dato adicional se obtiene on-demand desde `gop.identity` o del servicio dueño.
+**Regla general:** el JWT transporta **identidad + claims mínimos de autorización suficientes para decidir acceso en la capa de policies (§8.3 capa 3)**. Cualquier dato adicional se obtiene on-demand desde `gop.identity` o del servicio dueño.
 
 **MUST:**
 - Identificadores en claims: usar el `sub` (UserId) y los IDs estrictamente necesarios (`tenant_id`, `assigned_contract_ids`).
 - El nombre visible del usuario se obtiene por endpoint `/users/me` de `gop.identity`, no por claim.
 
-### 7.3 Arquitectura de autorización en 5 capas
+### 8.3 Arquitectura de autorización en 5 capas
 
 Conforme al análisis de diseño validado, la autorización **MUST** implementarse en cinco capas, cada una con responsabilidad clara:
 
@@ -394,7 +503,7 @@ Conforme al análisis de diseño validado, la autorización **MUST** implementar
 | 4. Resource-based | Handler | `_authService.AuthorizeAsync(user, resource, "View")` | Después de cargar el recurso |
 | 5. Domain Requirements | Handler | `HasValidProfessionalLicense` requirement | Antes de ejecutar firma |
 
-### 7.4 Alcance de datos (Data Scope) — modelo unificado en `UserRole`
+### 8.4 Alcance de datos (Data Scope) — modelo unificado en `UserRole`
 
 Todo alcance de datos del usuario (tenant, operadoras accesibles, contratos asignados, campos) se deriva de **dos fuentes y sólo dos**:
 
@@ -405,7 +514,7 @@ Todo alcance de datos del usuario (tenant, operadoras accesibles, contratos asig
 
 Un usuario **MAY** tener múltiples filas de `UserRole` vigentes. Su **alcance efectivo es la unión** de todas las asignaciones vigentes (`StartDate ≤ now < EndDate` o `EndDate IS NULL`).
 
-#### 7.4.1 Reglas de interpretación
+#### 8.4.1 Reglas de interpretación
 
 Para un `UserRole` dado, el alcance resultante se resuelve así:
 
@@ -426,7 +535,7 @@ Para un `UserRole` dado, el alcance resultante se resuelve así:
 3. El rol `OperatorAdmin` es un rol de operador que habilita gestionar usuarios y asignaciones dentro de su propia operadora.
 4. Combinaciones contradictorias (p.ej. `ContractId` que no pertenece a `OperatorId`) **MUST** rechazarse en la capa de `gop.identity` al asignar el `UserRole`.
 
-#### 7.4.2 Resolución al emitir el JWT
+#### 8.4.2 Resolución al emitir el JWT
 
 El claim `assigned_contract_ids` **no** es copia directa de la columna — es el resultado de **resolver** todas las filas vigentes de `UserRole` del usuario:
 
@@ -443,7 +552,7 @@ El claim `assigned_contract_ids` **no** es copia directa de la columna — es el
 
 **PROHIBIDO** que un servicio confíe en que `assigned_contract_ids` está completa sin verificar `contracts_truncated`.
 
-### 7.5 Permission-Based Authorization
+### 8.5 Permission-Based Authorization
 
 **MUST:** las policies de autorización se expresan en términos de **capabilities** (permisos finos), no de roles. El rol se convierte en un agrupador de capabilities.
 
@@ -466,9 +575,9 @@ public async Task<IActionResult> Approve([FromBody] ApproveForm103Command cmd)
 
 **MUST:** los permisos viven en la tabla `identity.Permission` (son datos, no código). Cambios de asignación rol-permiso son cambios de datos, no de despliegue.
 
-La lista inicial de capabilities se mantiene en el apéndice §19.
+La lista inicial de capabilities se mantiene en el apéndice §20.
 
-### 7.6 Resource-Based Authorization
+### 8.6 Resource-Based Authorization
 
 Cuando la autorización depende del recurso específico (ej. "¿este contrato pertenece al operador del usuario?"), **MUST** usarse `IAuthorizationService`:
 
@@ -488,7 +597,7 @@ public async Task<Result<ContractDetailDto>> Handle(GetContractByIdQuery query, 
 
 Los `IAuthorizationHandler` viven en `Infrastructure` y consultan el contexto del usuario contra los atributos del recurso.
 
-### 7.7 Domain Requirements
+### 8.7 Domain Requirements
 
 Autorizaciones específicas del dominio petrolero (ej. matrícula profesional vigente para firmar) se modelan como `IAuthorizationRequirement` personalizados:
 
@@ -502,7 +611,7 @@ public class HasValidProfessionalLicenseRequirement : IAuthorizationRequirement
 
 Estos requirements consultan `ProfessionalLicense` en `identity` y validan vigencia. Si la matrícula expiró, la acción se deniega aunque el usuario tenga el permiso.
 
-### 7.8 Autorización distribuida entre microservicios
+### 8.8 Autorización distribuida entre microservicios
 
 Cada microservicio **MUST**:
 
@@ -528,7 +637,7 @@ Cada microservicio **MUST**:
 - Un microservicio **MUST NOT** hacer HTTP a Identity Service para verificar cada acción rutinaria. Eso invalida el diseño stateless del JWT.
 - Un microservicio **MUST NOT** implementar su propia lógica de validación de token — **MUST** usar `Anh.Gop.Shared.Auth`.
 
-### 7.9 Revocación de permisos
+### 8.9 Revocación de permisos
 
 Dado que V1 no tiene event bus, la revocación tiene estas características (aceptadas como trade-off de diseño):
 
@@ -536,7 +645,7 @@ Dado que V1 no tiene event bus, la revocación tiene estas características (ace
 - Para revocación inmediata de un usuario comprometido, `gop.identity` mantiene una **revocation list** consultable. Los servicios **MAY** consultarla en operaciones críticas (firmas, aprobaciones de abandono).
 - Cuando se implemente event bus (V2+), la revocación se propagará por eventos y se invalidará cache local inmediatamente.
 
-### 7.10 Clasificación de datos y auditoría reforzada
+### 8.10 Clasificación de datos y auditoría reforzada
 
 **MUST:** toda entidad que contenga **datos clasificados o reservados** (conforme a la normativa de protección de información del Estado y clasificación interna ANH) **MUST**:
 
@@ -545,7 +654,7 @@ Dado que V1 no tiene event bus, la revocación tiene estas características (ace
 3. Registrar auditoría **adicional** de acceso: evento en `audit.AuditLog` con `EventType = 'DataAccess'` y, en `AdditionalContextJson`, los atributos `UserId`, `TenantId`, `Endpoint`, `ResourceType`, `ResourceId`, `AccessedFields`, `OccurredAt`, `Justification` (si el endpoint requiere justificación).
 4. **PROHIBIDO** incluirlos en listados exportables sin trazabilidad del export en `audit.AuditLog` con `EventType = 'Export'` (atributos: volumen exportado, filtros aplicados, destino, justificación).
 
-> **Nota de modelo:** `DataAccess` y `Export` son **tipos de evento especializados** dentro de la tabla única `audit.AuditLog` (ver `data-model.md` §10). No existen tablas físicas separadas `DataAccessLog` / `ExportLog`; el discriminador `EventType` y el payload en `AdditionalContextJson` cubren ambos casos sin fragmentar el esquema.
+> **Nota de modelo:** `DataAccess` y `Export` son **tipos de evento especializados** dentro de la tabla única `audit.AuditLog` (ver `data-model.md` §11). No existen tablas físicas separadas `DataAccessLog` / `ExportLog`; el discriminador `EventType` y el payload en `AdditionalContextJson` cubren ambos casos sin fragmentar el esquema.
 
 **Niveles de clasificación (marco de referencia):**
 
@@ -567,7 +676,7 @@ La asignación concreta de nivel a cada entidad del modelo (p.ej. ¿`Well.Fiscal
 
 **MUST:** ningún desarrollador asigna nivel `Confidential` o superior sin aprobación documentada del responsable de datos.
 
-### 7.11 Líneas rojas de seguridad
+### 8.11 Líneas rojas de seguridad
 
 **PROHIBIDO:**
 
@@ -577,90 +686,90 @@ La asignación concreta de nivel a cada entidad del modelo (p.ej. ¿`Well.Fiscal
 - `[AllowAnonymous]` en endpoints de mutación — solo permitido en auth endpoints.
 - Confiar en headers `X-User-*` salvo que vengan del gateway con conexión interna garantizada.
 
-### 7.12 Cumplimiento normativo del modelo de identidad
+### 8.12 Cumplimiento normativo del modelo de identidad
 
 Esta sección **mapea explícitamente** los controles de las normas y estándares aplicables al modelo de identidad de GOP. Su propósito es servir como **evidencia directa de cumplimiento** frente a auditorías internas, revisiones de ciberseguridad de ANH y cualquier stakeholder que requiera justificar el diseño.
 
-#### 7.12.1 Ninguna norma aplicable prohíbe emitir JWT propios
+#### 8.12.1 Ninguna norma aplicable prohíbe emitir JWT propios
 
 Ni **OWASP Top 10**, ni **OWASP ASVS v4**, ni **ISO/IEC 27001/27002:2022**, ni los RFC aplicables **prohíben** que una aplicación emita sus propios JWT ni **exigen** un IdP externo como única fuente de tokens. Lo que exigen es que **los controles técnicos de emisión, firma, transporte, validación y revocación** cumplan buenas prácticas. El patrón **RFC 8693 — OAuth 2.0 Token Exchange** contempla literalmente el flujo "token externo → token interno con claims de dominio propios" que aplica GOP.
 
-#### 7.12.2 Mapeo OWASP ASVS v4 (Authentication & Session Management)
+#### 8.12.2 Mapeo OWASP ASVS v4 (Authentication & Session Management)
 
 | Control ASVS v4 | Requisito | Sección GOP |
 |---|---|---|
-| V2.1.1–V2.1.9 | Password strength, história, notificación de cambio | §12.6 |
-| V2.2.1–V2.2.7 | Rate limiting, lockout, protección anti-automation | §12.5, §12.6 |
-| V2.4.1–V2.4.5 | Credential storage (PBKDF2/Argon2/bcrypt, ≥100k iter) | §12.8 |
-| V2.5.1–V2.5.7 | Recuperación de credenciales, reset seguro | §7.1, §12.6 |
-| V2.7.1–V2.7.6 | MFA, factores robustos | §12.6 |
-| V2.8.1–V2.8.7 | Credenciales de máquina (service accounts) | §7.1.1.1 |
-| V3.2.1–V3.2.4 | Generación de tokens de sesión aleatorios, integridad | §7.1, §12.8 |
-| V3.3.1–V3.3.4 | Terminación de sesión, idle/absolute timeout | §12.6 |
-| V3.5.1–V3.5.3 | **Tokens auto-emitidos: firma fuerte, validación de claims** | §7.1, §7.2, §12.8 |
-| V3.7.1 | Reautenticación para acciones sensibles | §7.7 (Domain Requirements) |
+| V2.1.1–V2.1.9 | Password strength, história, notificación de cambio | §13.6 |
+| V2.2.1–V2.2.7 | Rate limiting, lockout, protección anti-automation | §13.5, §13.6 |
+| V2.4.1–V2.4.5 | Credential storage (PBKDF2/Argon2/bcrypt, ≥100k iter) | §13.8 |
+| V2.5.1–V2.5.7 | Recuperación de credenciales, reset seguro | §8.1, §13.6 |
+| V2.7.1–V2.7.6 | MFA, factores robustos | §13.6 |
+| V2.8.1–V2.8.7 | Credenciales de máquina (service accounts) | §8.1.1.1 |
+| V3.2.1–V3.2.4 | Generación de tokens de sesión aleatorios, integridad | §8.1, §13.8 |
+| V3.3.1–V3.3.4 | Terminación de sesión, idle/absolute timeout | §13.6 |
+| V3.5.1–V3.5.3 | **Tokens auto-emitidos: firma fuerte, validación de claims** | §8.1, §8.2, §13.8 |
+| V3.7.1 | Reautenticación para acciones sensibles | §8.7 (Domain Requirements) |
 
 > **Nota ASVS V3.5:** este bloque de ASVS v4 aplica específicamente a **tokens auto-emitidos por la aplicación** (self-contained tokens / JWT). Su existencia en el estándar confirma que emitir JWT propios es un escenario reconocido y admitido, no una desviación.
 
-#### 7.12.3 Mapeo OWASP JWT Cheat Sheet
+#### 8.12.3 Mapeo OWASP JWT Cheat Sheet
 
 | Recomendación | Cómo se cumple en GOP |
 |---|---|
 | Rechazar `alg: none` | `JwtBearerOptions.TokenValidationParameters.ValidateIssuerSigningKey = true`; algoritmos permitidos fijados explícitamente en shared lib |
-| Algoritmo asimétrico (RS256/ES256) | **RS256** mandatorio (§7.1, §12.8); HS256 prohibido |
-| Rotación de keys | Anual, keys en Key Vault (§12.8) |
-| Expiración corta | 30–60 min (§7.1) |
-| Validar `iss`, `aud`, `exp`, `nbf` | Aplicado en `Anh.Gop.Shared.Auth` (§16.3) |
-| Refresh token rotation + detección de reuso | §12.6 |
-| No datos sensibles en claims | §7.2.1 |
-| Revocación | Revocation list (§7.9) |
+| Algoritmo asimétrico (RS256/ES256) | **RS256** mandatorio (§8.1, §13.8); HS256 prohibido |
+| Rotación de keys | Anual, keys en Key Vault (§13.8) |
+| Expiración corta | 30–60 min (§8.1) |
+| Validar `iss`, `aud`, `exp`, `nbf` | Aplicado en `Anh.Gop.Shared.Auth` (§17.3) |
+| Refresh token rotation + detección de reuso | §13.6 |
+| No datos sensibles en claims | §8.2.1 |
+| Revocación | Revocation list (§8.9) |
 
-#### 7.12.4 Mapeo OWASP Top 10 (2021)
+#### 8.12.4 Mapeo OWASP Top 10 (2021)
 
 | OWASP | Aplicación al modelo de identidad | Sección |
 |---|---|---|
-| A01 — Broken Access Control | Autorización en 5 capas, policies declarativas, tenant isolation, resource-based authz | §7.3–§7.8 |
-| A02 — Cryptographic Failures | RS256 + keys en KeyVault, PBKDF2 para passwords, TLS, Always Encrypted para nivel ≥3 | §7.1, §12.3, §12.8 |
-| A07 — Identification and Authentication Failures | MFA, lockout dual, password policy, refresh rotation, revocation list | §12.5, §12.6, §7.9 |
-| A09 — Security Logging and Monitoring Failures | Audit.NET por mutación, eventos de autenticación registrados con justificación si aplica | §11.6, §7.10 |
+| A01 — Broken Access Control | Autorización en 5 capas, policies declarativas, tenant isolation, resource-based authz | §8.3–§8.8 |
+| A02 — Cryptographic Failures | RS256 + keys en KeyVault, PBKDF2 para passwords, TLS, Always Encrypted para nivel ≥3 | §8.1, §13.3, §13.8 |
+| A07 — Identification and Authentication Failures | MFA, lockout dual, password policy, refresh rotation, revocation list | §13.5, §13.6, §8.9 |
+| A09 — Security Logging and Monitoring Failures | Audit.NET por mutación, eventos de autenticación registrados con justificación si aplica | §12.6, §8.10 |
 
-Mapa global OWASP Top 10 → documento ya disponible en §12.15.
+Mapa global OWASP Top 10 → documento ya disponible en §13.15.
 
-#### 7.12.5 Mapeo ISO/IEC 27001:2022 — Anexo A (controles ISO 27002:2022)
+#### 8.12.5 Mapeo ISO/IEC 27001:2022 — Anexo A (controles ISO 27002:2022)
 
 | Control | Descripción | Cómo se cumple |
 |---|---|---|
-| **A.5.15** Control de acceso | Política de acceso basada en roles y necesidad | §7.3 (5 capas), §7.5–§7.6 (RBAC + resource) |
-| **A.5.16** Gestión de identidad | Ciclo de vida de la identidad (alta, modificación, baja) | §7.4 (`UserRole` con StartDate/EndDate), §7.9 (revocación), `data-model.md` §9 |
-| **A.5.17** Información de autenticación | Asignación, uso y protección de credenciales | §7.1.1 (federación + local), §12.6 (políticas), §12.8 (hashing) |
-| **A.5.18** Derechos de acceso | Provisión y revisión periódica | §7.4 (UserRole explícito, auditable), §11.6 (audit trail) |
-| **A.8.2** Privilegios de acceso | Gestión restrictiva de privilegios elevados | §12.6 (MFA obligatoria para roles sensibles), §7.1.1.1 (prohibición de ANH_Admin local salvo bootstrap) |
-| **A.8.3** Restricción de acceso a la información | Accesos según clasificación | §7.10 (data classification 0–4) |
-| **A.8.5** Autenticación segura | Mecanismos robustos de autenticación | §7.1, §7.1.1 (OIDC federado), §12.6 (MFA) |
-| **A.8.15** Logging | Registro de eventos de seguridad | §11.6 (Audit.NET), §13 (observabilidad) |
-| **A.8.24** Uso de criptografía | Política y gestión de claves | §12.8 |
-| **A.8.28** Desarrollo seguro | Prácticas de desarrollo seguro | §12 completo, §12.13 (analyzers) |
+| **A.5.15** Control de acceso | Política de acceso basada en roles y necesidad | §8.3 (5 capas), §8.5–§8.6 (RBAC + resource) |
+| **A.5.16** Gestión de identidad | Ciclo de vida de la identidad (alta, modificación, baja) | §8.4 (`UserRole` con StartDate/EndDate), §8.9 (revocación), `data-model.md` §10 |
+| **A.5.17** Información de autenticación | Asignación, uso y protección de credenciales | §8.1.1 (federación + local), §13.6 (políticas), §13.8 (hashing) |
+| **A.5.18** Derechos de acceso | Provisión y revisión periódica | §8.4 (UserRole explícito, auditable), §12.6 (audit trail) |
+| **A.8.2** Privilegios de acceso | Gestión restrictiva de privilegios elevados | §13.6 (MFA obligatoria para roles sensibles), §8.1.1.1 (prohibición de ANH_Admin local salvo bootstrap) |
+| **A.8.3** Restricción de acceso a la información | Accesos según clasificación | §8.10 (data classification 0–4) |
+| **A.8.5** Autenticación segura | Mecanismos robustos de autenticación | §8.1, §8.1.1 (OIDC federado), §13.6 (MFA) |
+| **A.8.15** Logging | Registro de eventos de seguridad | §12.6 (Audit.NET), §14 (observabilidad) |
+| **A.8.24** Uso de criptografía | Política y gestión de claves | §13.8 |
+| **A.8.28** Desarrollo seguro | Prácticas de desarrollo seguro | §13 completo, §13.13 (analyzers) |
 
 > **Nota ISO 27001:** los controles del Anexo A son **neutrales respecto a la tecnología**. Ninguno exige IdP externo específico, ni proveedor comercial, ni prohíbe emisión de tokens propios. Exigen que haya política, trazabilidad, control de privilegios y gestión del ciclo de vida — todos satisfechos por el diseño actual.
 
-#### 7.12.6 Mapeo RFC aplicables
+#### 8.12.6 Mapeo RFC aplicables
 
 | RFC | Relevancia | Aplicación en GOP |
 |---|---|---|
-| **RFC 7519** — JWT | Estructura y claims estándar | §7.2 (claims conformes); `sub`, `iss`, `aud`, `exp`, `nbf`, `iat` estándar + claims privados declarados |
-| **RFC 7515** — JWS | Firma | RS256 (§7.1, §12.8) |
+| **RFC 7519** — JWT | Estructura y claims estándar | §8.2 (claims conformes); `sub`, `iss`, `aud`, `exp`, `nbf`, `iat` estándar + claims privados declarados |
+| **RFC 7515** — JWS | Firma | RS256 (§8.1, §13.8) |
 | **RFC 6749** — OAuth 2.0 | Framework de autorización | Flujo Authorization Code con PKCE para frontend SPA |
 | **RFC 7636** — PKCE | Protección de Authorization Code | Requerido por `Anh.Gop.Shared.Auth` |
-| **RFC 8693** — OAuth 2.0 Token Exchange | **Intercambio token externo → token interno** | §7.1.1 (patrón central del modelo federado) |
+| **RFC 8693** — OAuth 2.0 Token Exchange | **Intercambio token externo → token interno** | §8.1.1 (patrón central del modelo federado) |
 | **RFC 6750** — Bearer Token Usage | Transporte del token | Header `Authorization: Bearer` obligatorio; prohibida query string |
-| **OIDC Core 1.0** | OpenID Connect | Integración con IdP externo (§7.1.1) |
+| **OIDC Core 1.0** | OpenID Connect | Integración con IdP externo (§8.1.1) |
 
-#### 7.12.7 Controles residuales y excepciones documentadas
+#### 8.12.7 Controles residuales y excepciones documentadas
 
 Los controles que **no** son automatizables y sí requieren decisión organizacional quedan fuera del alcance del backend y son responsabilidad del plan de seguridad del cliente (ANH):
 
-- Confirmación formal del IdP externo a utilizar (input para desactivar autenticación local — ver §7.1.1.1).
-- Matriz de clasificación concreta por entidad (input para `[DataClassification]` — ver §7.10).
+- Confirmación formal del IdP externo a utilizar (input para desactivar autenticación local — ver §8.1.1.1).
+- Matriz de clasificación concreta por entidad (input para `[DataClassification]` — ver §8.10).
 - Política de revisión periódica de accesos (requerido por ISO A.5.18) — operativo, no de diseño.
 - Plan de respuesta a incidentes (ISO A.5.24–A.5.30) — documentado fuera de esta constitución.
 
@@ -668,15 +777,15 @@ Cuando ANH emita la matriz de clasificación, los documentos de política corres
 
 ---
 
-## 8. Patrón de exposición de datos — DTOs
+## 9. Patrón de exposición de datos — DTOs
 
 Esta sección define cómo se expone la información al frontend y a otros consumidores. Es central para mantenibilidad.
 
-### 8.1 Regla general
+### 9.1 Regla general
 
 **MUST:** todo endpoint devuelve **DTOs**, nunca entidades de dominio ni modelos de EF. Los DTOs viven en `Application` y son clases inmutables (registros o `init` properties).
 
-### 8.2 Clasificación de entidades (para decidir tratamiento)
+### 9.2 Clasificación de entidades (para decidir tratamiento)
 
 Cada entidad del modelo de datos **MUST** clasificarse en uno de estos cuatro tipos:
 
@@ -687,21 +796,46 @@ Cada entidad del modelo de datos **MUST** clasificarse en uno de estos cuatro ti
 | **C. Entidad transversal** | Miles de items, cambian con negocio | Endpoint de búsqueda paginada + por ID con cache |
 | **D. Entidad transaccional de dominio** | Datos de operación frecuente | Lista resumida + detalle limpio |
 
-La clasificación es decisión de arquitectura y **MUST** documentarse en el modelo de datos. Cambiar clasificación requiere ADR.
+La clasificación es decisión de arquitectura y **MUST** documentarse en el modelo de datos. Cambiar clasificación de una entidad ya productiva requiere ADR (impacta contratos públicos y caching del FE).
 
-### 8.3 Patrón para entidades Tipo D — listado vs detalle
+### 9.3 Patrón para entidades Tipo D — listado vs detalle
 
 Esta es la regla más crítica del proyecto y aplica a la mayoría de endpoints.
 
-#### 8.3.1 DTO de listado (Summary DTO)
+#### 9.3.0 Principio rector — crudo con IDs; excepción calificada en listados
+
+El backend emite **DTOs crudos con identificadores** (`OperatorId`, `ContractId`, `CurrentStateId`, etc.). **El frontend es quien hidrata** las etiquetas humanas resolviendo esos IDs contra sus servicios de catálogo locales (ver `CONSTITUTION-fe.md` §22 — *Normalized DTO with Client-Side Hydration*). Este principio aplica por defecto a todas las respuestas de la API.
+
+**Justificación:**
+- Una sola fuente de verdad para los catálogos (el FE los consume una vez y los reutiliza).
+- Payloads más pequeños y cacheables.
+- Si un catálogo cambia (renombra un estado, añade un campo), no hay que tocar endpoints transaccionales.
+- Idioma/localización se aplican en cliente sin variar el contrato del back.
+
+**Excepción calificada — listados (`SummaryDto`):** los endpoints de listado **MAY** incluir etiquetas precomputadas (resueltas por JOIN en SQL) de los catálogos referenciados. Esto se permite **exclusivamente** porque:
+- Un listado puede devolver 50–500 filas por página; hidratar 500 × N IDs de catálogo en el cliente es costoso y ruidoso.
+- La etiqueta se muestra literalmente en la columna de la tabla — es parte de la vista, no un dato derivado.
+- El FE no puede conocer de antemano qué columnas van a necesitarse desde catálogos transversales (Tipo C, miles de items) sin prefetch que no vale la pena.
+
+**Qué NO está cubierto por la excepción:**
+- El DTO de **detalle** (`DetailDto`) nunca lleva labels precomputados — FE hidrata. La excepción del Summary no se extiende al Detail.
+- Sub-agregados embebidos dentro del Summary — si se necesitan, el DTO no es un Summary; es una vista (§9.5).
+- Texto largo, descripciones o campos no visibles en la tabla por defecto — esos viven en el Detail.
+
+**Resumen en una línea:**
+> **Regla general:** DTOs crudos con IDs → FE hidrata. **Excepción calificada:** `SummaryDto` de listados puede llevar labels precomputados de catálogos para evitar hidratación masiva en tablas.
+
+#### 9.3.1 DTO de listado (Summary DTO)
 
 **MUST** nombrar `{Entity}SummaryDto`.
 
-**MUST** incluir **solo** campos que cumplan al menos una de estas condiciones:
+**SHOULD** incluir solo campos que cumplan al menos una de estas condiciones:
 - (a) Identificador (PK o código visible al usuario).
 - (b) Se muestra como columna visible por defecto en la tabla de la vista.
 - (c) Se usa para filtrar u ordenar el listado.
 - (d) Es flag de estado que condiciona acciones en la fila (`isEditable`, `hasActiveAlerts`).
+
+> El criterio es mantener el Summary liviano — si un caso legítimo requiere un campo adicional (ej. tooltip de uso frecuente), inclúyase con justificación en el PR. Lo que no cabe aquí se resuelve con un DTO especializado (§9.5).
 
 **MAY** incluir labels precomputados de catálogos referenciados (resueltos vía JOIN en SQL), para evitar que el frontend tenga que hidratar 5,000 filas en un listado.
 
@@ -734,7 +868,7 @@ public record WellSummaryDto
 }
 ```
 
-#### 8.3.2 DTO de detalle (Detail DTO)
+#### 9.3.2 DTO de detalle (Detail DTO)
 
 **MUST** nombrar `{Entity}DetailDto`.
 
@@ -775,7 +909,7 @@ public record WellDetailDto
 }
 ```
 
-### 8.4 Sub-recursos anidados
+### 9.4 Sub-recursos anidados
 
 Colecciones hijas **MUST** exponerse como sub-recursos bajo el recurso padre:
 
@@ -787,7 +921,7 @@ GET /api/v1/wells/{wellId}/state-history
 GET /api/v1/wells/{wellId}/procedures?status=active
 ```
 
-### 8.5 Endpoints especializados (excepciones Tipo D)
+### 9.5 Endpoints especializados (excepciones Tipo D)
 
 **SHOULD** crearse cuando un caso de uso requiere forma distinta al listado o detalle estándar:
 
@@ -799,9 +933,10 @@ GET /api/v1/wells/{wellId}/procedures?status=active
 **MUST:**
 - Nombre del DTO refleja propósito: `WellMapMarkerDto`, `WellExportRowDto`, `WellAutocompleteDto`.
 - Viven en folder separado: `Application/Wells/Views/` vs `Application/Wells/Queries/`.
-- Cada uno tiene su ADR documentando por qué existe como excepción.
 
-### 8.6 Patrón para entidades Tipo A — Catálogos globales
+**SHOULD:** documentar en el PR o en la propia vista por qué no bastan Summary/Detail. ADR solo si introduce un patrón recurrente nuevo (ver §0.1).
+
+### 9.6 Patrón para entidades Tipo A — Catálogos globales
 
 **MUST:** cada catálogo global se expone via:
 
@@ -839,7 +974,7 @@ GET /api/v1/session/bootstrap
 
 **SHOULD:** soporte de ETag / If-None-Match para habilitar cache en frontend.
 
-### 8.7 Patrón para entidades Tipo C — Entidades transversales
+### 9.7 Patrón para entidades Tipo C — Entidades transversales
 
 **MUST:**
 - Endpoint de búsqueda paginada: `GET /api/v1/operators?search=xxx&pageSize=20`.
@@ -848,17 +983,41 @@ GET /api/v1/session/bootstrap
 
 ---
 
-## 9. Contratos de API
+## 10. Contratos de API
 
-### 9.1 Versionado
+### 10.1 Versionado
 
 **MUST:** todo endpoint vive bajo `/api/v{N}/...`. Versión inicial: `v1`.
 
-**MUST:** cuando se publica `v2`, el `v1` **MUST** mantenerse vivo al menos 6 meses tras la liberación de `v2`, salvo decisión explícita documentada.
+**MUST:** el versionado se implementa con `Asp.Versioning.Http` + `Asp.Versioning.Mvc.ApiExplorer` (reemplazo oficial de `Microsoft.AspNetCore.Mvc.Versioning`, deprecado desde .NET 7):
+
+```bash
+dotnet add package Asp.Versioning.Http
+dotnet add package Asp.Versioning.Mvc.ApiExplorer
+```
+
+Configuración mínima en `Program.cs`:
+
+```csharp
+builder.Services.AddApiVersioning(options =>
+{
+    options.DefaultApiVersion = new ApiVersion(1);
+    options.AssumeDefaultVersionWhenUnspecified = true;
+    options.ReportApiVersions = true;
+    options.ApiVersionReader = new UrlSegmentApiVersionReader();
+})
+.AddApiExplorer(options =>
+{
+    options.GroupNameFormat = "'v'V";
+    options.SubstituteApiVersionInUrl = true;
+});
+```
+
+**SHOULD:** cuando se publica `v2`, `v1` se mantiene vivo al menos 6 meses tras la liberación de `v2` para dar margen de migración a los consumidores. El plazo puede acortarse si el inventario de consumidores es conocido y todos han migrado; se documenta la decisión (y el plan de migración confirmado) en el PR de retiro. Prolongarlo es siempre aceptable.
 
 **PROHIBIDO** breaking changes en un endpoint una vez publicado en su versión.
 
-### 9.2 Paginación uniforme
+### 10.2 Paginación uniforme
 
 **MUST:** todos los endpoints de listado usan esta estructura:
 
@@ -880,14 +1039,16 @@ GET /api/v1/session/bootstrap
 }
 ```
 
-**MUST:** `pageSize` máximo:
+**MUST:** todo endpoint de listado define un `pageSize` máximo configurable y rechaza con HTTP 400 cualquier solicitud que lo exceda. No se permiten listados sin tope superior.
+
+**SHOULD:** valores por defecto del proyecto (pueden ajustarse por endpoint con justificación en el PR, sin ADR):
 - Default: 50.
 - Máximo en endpoints normales: 100.
 - Máximo en endpoints de exportación: 500 por página (y exportación paginada internamente si excede).
 
-**MUST:** solicitud con `pageSize > max` retorna HTTP 400 con mensaje claro.
+Los valores viven en configuración del servicio, no hardcoded en código de contrato.
 
-### 9.3 Filtros tipados
+### 10.3 Filtros tipados
 
 **MUST:** filtros son campos específicos, no free-form:
 
@@ -899,13 +1060,13 @@ GET /api/v1/session/bootstrap
 
 **PROHIBIDO** filtros dinámicos tipo LINQ injection (`?filter=age > 5 and name like 'foo'`).
 
-### 9.4 Ordenamiento
+### 10.4 Ordenamiento
 
 **MUST:** campo `sortBy` toma uno de los campos del `SummaryDto`. Campos no-listados **MUST** retornar HTTP 400.
 
 **MUST:** `sortDirection` ∈ {`asc`, `desc`}. Default `asc`.
 
-### 9.5 Respuestas de error — ProblemDetails
+### 10.5 Respuestas de error — ProblemDetails
 
 **MUST** usar RFC 7807 (ProblemDetails) para errores:
 
@@ -935,22 +1096,22 @@ Códigos HTTP estándar:
 
 **PROHIBIDO** devolver 500 por errores de validación o reglas de negocio.
 
-### 9.6 Respuestas de éxito — POST / PUT / PATCH / DELETE
+### 10.6 Respuestas de éxito — POST / PUT / PATCH / DELETE
 
-Las respuestas de error ya están estandarizadas por §9.5 (ProblemDetails RFC 7807). Esta sección fija el **contrato de éxito** para todas las mutaciones, garantizando uniformidad entre servicios y facilitando el consumo por el frontend.
+Las respuestas de error ya están estandarizadas por §10.5 (ProblemDetails RFC 7807). Esta sección fija el **contrato de éxito** para todas las mutaciones, garantizando uniformidad entre servicios y facilitando el consumo por el frontend.
 
-#### 9.6.1 Principio — sin envelope universal
+#### 10.6.1 Principio — sin envelope universal
 
 **PROHIBIDO** envolver respuestas exitosas en un wrapper custom tipo `{ status, message, data }` o `{ success: true, data: ... }`. Razones:
 
 1. HTTP ya entrega `status` en el **status code** — redundarlo en el body rompe el protocolo.
-2. Los errores viajan en **ProblemDetails** (§9.5) — un estándar con soporte nativo en librerías HTTP del ecosistema.
+2. Los errores viajan en **ProblemDetails** (§10.5) — un estándar con soporte nativo en librerías HTTP del ecosistema.
 3. Un envelope universal obliga al cliente a hacer `res.data.xxx` en lugar de `res.xxx`, infla cada payload y ensucia los tipos generados desde OpenAPI.
 4. Los **mensajes de UX** (toasts, confirmaciones) los produce el frontend con su i18n. El backend entrega **hechos** (recurso, estado), no texto de presentación.
 
 La consistencia real del contrato viene de: **status code correcto + ProblemDetails en error + DTO tipado en éxito**.
 
-#### 9.6.2 Tabla de convención — status, body y headers
+#### 10.6.2 Tabla de convención — status, body y headers
 
 | Verbo | Escenario | Status | Body | Headers |
 |---|---|---|---|---|
@@ -958,21 +1119,21 @@ La consistencia real del contrato viene de: **status code correcto + ProblemDeta
 | `POST /resources/{id}/action` | Acción de dominio sincrónica (approve, sign, abandon, submit) | **200 OK** | DTO Detail del recurso con el nuevo estado | — |
 | `POST /resources/{id}/action` | Acción asíncrona (integración SGC, export masivo, job largo) | **202 Accepted** | `{ operationId, statusUrl, estimatedCompletion? }` | `Location: /api/v1/operations/{operationId}` |
 | `POST /resources/bulk-import` | Carga masiva | **200 OK** | `{ totalProcessed, successful, failed, errors: [{ row, field, message }] }` | — |
-| `PUT /resources/{id}` | Reemplazo completo | **200 OK** | DTO Detail actualizado | `ETag` (si aplica §11.5) |
-| `PATCH /resources/{id}` | Actualización parcial | **200 OK** | DTO Detail actualizado | `ETag` (si aplica §11.5) |
+| `PUT /resources/{id}` | Reemplazo completo | **200 OK** | DTO Detail actualizado | `ETag` (si aplica §12.5) |
+| `PATCH /resources/{id}` | Actualización parcial | **200 OK** | DTO Detail actualizado | `ETag` (si aplica §12.5) |
 | `DELETE /resources/{id}` | Borrado físico (hard) | **204 No Content** | (sin body) | — |
 | `DELETE /resources/{id}` | Inactivación lógica (soft) | **200 OK** | DTO Detail con el estado resultante | — |
 
-#### 9.6.3 Reglas vinculantes
+#### 10.6.3 Reglas vinculantes
 
 **MUST:**
 
 1. **Devolver DTO Detail** en POST/PUT/PATCH. **PROHIBIDO** devolver sólo `{ id }` pelado — el frontend ya necesita mostrar el recurso y una respuesta con Detail elimina un GET subsecuente, reduce latencia y elimina una ruta de error.
 2. **`Location` header obligatorio** en 201 (apunta al recurso) y en 202 (apunta al endpoint de tracking).
 3. **204 sólo para DELETE hard** sin información útil de retorno. Ningún otro verbo devuelve 204 por defecto.
-4. **Concurrencia optimista:** mutaciones sobre entidades con `RowVersion` (§11.5) exigen `If-Match: <ETag>`. Ausencia → **428 Precondition Required**. Mismatch → **412 Precondition Failed**. ETag se emite en la respuesta de GET, POST, PUT y PATCH.
-5. **Idempotencia** (`Idempotency-Key`, §9.7) aplica a POST de creación y de acción crítica. Respuestas idempotentes replican status y body originales.
-6. **Workflow actions** (`POST /procedures/{id}/approve`, `POST /wells/{id}/abandon`, `POST /forms/{id}/submit`) retornan **200 OK con el DTO Detail** del recurso afectado, no un `"ok"` ni un booleano. Los efectos colaterales (creación de `WellStateHistory`, notificaciones) se observan vía eventos de auditoría (§11.6) o endpoints específicos, no en este body.
+4. **Concurrencia optimista:** mutaciones sobre entidades con `RowVersion` (§12.5) exigen `If-Match: <ETag>`. Ausencia → **428 Precondition Required**. Mismatch → **412 Precondition Failed**. ETag se emite en la respuesta de GET, POST, PUT y PATCH.
+5. **Idempotencia** (`Idempotency-Key`, §10.7) aplica a POST de creación y de acción crítica. Respuestas idempotentes replican status y body originales.
+6. **Workflow actions** (`POST /procedures/{id}/approve`, `POST /wells/{id}/abandon`, `POST /forms/{id}/submit`) retornan **200 OK con el DTO Detail** del recurso afectado, no un `"ok"` ni un booleano. Los efectos colaterales (creación de `WellStateHistory`, notificaciones) se observan vía eventos de auditoría (§12.6) o endpoints específicos, no en este body.
 7. **202 Accepted** incluye siempre `operationId` y `statusUrl` para polling. El endpoint `GET /operations/{operationId}` devuelve `{ status: 'Pending'|'InProgress'|'Completed'|'Failed', result?, error? }`.
 
 **PROHIBIDO:**
@@ -981,7 +1142,7 @@ La consistencia real del contrato viene de: **status code correcto + ProblemDeta
 - Incluir texto de UX en el body de éxito (`"message": "Pozo creado correctamente"`). Si existe necesidad real de comunicar algo contextual, va en un campo tipado del DTO (ej. `warnings: string[]`), nunca como mensaje de presentación.
 - Mezclar formatos entre endpoints del mismo servicio. Todos los POST del servicio siguen esta tabla sin excepción.
 
-#### 9.6.4 Helpers del Result Pattern
+#### 10.6.4 Helpers del Result Pattern
 
 La shared library `Anh.Gop.Shared.ResultPattern` expone extensiones canónicas que cada controller usa para producir el status code correcto. Firmas de referencia:
 
@@ -1004,11 +1165,11 @@ result.ToOkResult();
 
 El desarrollador de feature **no** elige el status — la extensión lo determina por convención. Esto garantiza uniformidad sin disciplina manual por endpoint.
 
-### 9.7 Idempotencia
+### 10.7 Idempotencia
 
 **SHOULD:** endpoints POST críticos (crear pozo, radicar forma, aprobar, firmar) soportan header `Idempotency-Key`. El servicio mantiene una tabla de claves usadas por N horas y retorna la misma respuesta si la misma clave se repite.
 
-### 9.8 Documentación
+### 10.8 Documentación
 
 **MUST:** Swagger/OpenAPI en cada servicio, expuesto en `/swagger`. Incluye:
 - Resúmenes XML de endpoints, parámetros y responses.
@@ -1016,13 +1177,37 @@ El desarrollador de feature **no** elige el status — la extensión lo determin
 - Códigos de error documentados.
 - Esquemas de seguridad (Bearer Auth).
 
-**PROHIBIDO** endpoints sin documentación XML en producción.
+**MUST:** los **endpoints públicos de la API de negocio** (`/api/v{N}/...`) tienen documentación XML completa en producción (resumen, parámetros, responses, códigos de error esperados).
 
-### 9.9 Convenciones adicionales de serialización
+**SHOULD:** DTOs y propiedades con nombres autodocumentados tienen al menos un resumen corto; no se exige documentar cada propiedad trivial (`Id`, `Name`, `CreatedAt`).
+
+Los endpoints de **infraestructura** (health checks, métricas Prometheus, `/swagger` mismo) están **exentos** de este requisito.
+
+#### DocFX — documentación de desarrollo
+
+**MUST:** cada servicio incluye un proyecto DocFX que genera un sitio estático de documentación a partir de:
+- Los comentarios XML del código fuente (`/// <summary>`)
+- Archivos Markdown del directorio `docs/` del servicio (guías de uso, decisiones locales, modelo de datos)
+
+**MUST:** el sitio DocFX se genera en CI en cada merge a `main` y se publica en el servidor de documentación interno.
+
+**SHOULD:** la spec de cada feature (`specs/HU-XXXX/`) se enlaza desde el sitio DocFX del servicio correspondiente para mantener trazabilidad requerimiento → código → documentación.
+
+**Estructura mínima:**
+```
+<servicio>/
+  docs/
+    index.md          ← descripción del servicio
+    architecture.md   ← decisiones locales (ADRs del servicio)
+    data-model.md     ← modelo de datos actualizado
+  docfx.json          ← configuración DocFX
+```
+
+### 10.9 Convenciones adicionales de serialización
 
 Reglas transversales que aplican a **todos** los payloads (request y response) de la API pública.
 
-#### 9.9.1 Fechas, horas y zona horaria
+#### 10.9.1 Fechas, horas y zona horaria
 
 **MUST:**
 - Todas las fechas/horas se serializan en **ISO 8601** con offset explícito (`yyyy-MM-ddTHH:mm:ss.fffzzz`) o en UTC con sufijo `Z` (`yyyy-MM-ddTHH:mm:ss.fffZ`).
@@ -1032,7 +1217,7 @@ Reglas transversales que aplican a **todos** los payloads (request y response) d
 
 **PROHIBIDO:** fechas en formato local, epoch como número, o strings ambiguos (`"21/04/2026"`).
 
-#### 9.9.2 Serialización de enums
+#### 10.9.2 Serialización de enums
 
 **MUST:** enums se serializan como **string** (nombre del valor), no como entero.
 
@@ -1049,7 +1234,7 @@ builder.Services.ConfigureHttpJsonOptions(opt =>
 
 **PROHIBIDO:** exponer enums como `int` en contratos públicos.
 
-#### 9.9.3 Nomenclatura JSON
+#### 10.9.3 Nomenclatura JSON
 
 **MUST:** **camelCase** en todas las propiedades JSON (request y response). Es el default de `System.Text.Json` en .NET 10 y se mantiene explícito en `Anh.Gop.Shared.Api`:
 
@@ -1060,13 +1245,13 @@ opt.SerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
 
 **PROHIBIDO:** `snake_case`, `PascalCase`, o mezclas por endpoint.
 
-#### 9.9.4 Null vs. omitido
+#### 10.9.4 Null vs. omitido
 
 **MUST:**
 - En **responses**: propiedades con valor `null` se **omiten** del JSON (`DefaultIgnoreCondition = WhenWritingNull`), excepto cuando el `null` es semánticamente significativo (ej. "el campo fue limpiado"). En ese caso, documentar explícitamente en Swagger.
 - En **requests (PATCH)**: un campo **omitido** significa "no cambiar"; un campo con valor `null` significa "limpiar a null". Se implementa con `JsonPatchDocument` o DTOs con `Optional<T>` cuando sea crítico.
 
-#### 9.9.5 Uploads y downloads de archivos
+#### 10.9.5 Uploads y downloads de archivos
 
 **MUST — Uploads:**
 - Contenido binario (PDFs, XLS, imágenes adjuntas a formas) usa `multipart/form-data`.
@@ -1081,7 +1266,7 @@ opt.SerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
 
 **PROHIBIDO:** enviar archivos como base64 embebido en JSON (salvo casos < 100 KB justificados y documentados).
 
-#### 9.9.6 Exportes tabulares (CSV, Excel, PDF)
+#### 10.9.6 Exportes tabulares (CSV, Excel, PDF)
 
 **MUST:**
 - Endpoints de export se identifican por sufijo `/export` o query `?format=csv|xlsx|pdf`.
@@ -1099,9 +1284,9 @@ opt.SerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
 
 ---
 
-## 10. Patrones obligatorios
+## 11. Patrones obligatorios
 
-### 10.1 CQRS con dispatchers propios
+### 11.1 CQRS con dispatchers propios
 
 **MUST:**
 - Commands (mutaciones) separados de Queries (lecturas).
@@ -1113,7 +1298,7 @@ opt.SerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
 
 **PROHIBIDO:**
 - Lógica de dominio en controllers.
-- Dependencias externas de mediador (MediatR, Mediator.SourceGenerator, etc.) en V1. Ver §10.1.1.
+- Dependencias externas de mediador (MediatR, Mediator.SourceGenerator, etc.) en V1. Ver §11.1.1.
 
 **Estructura por feature (sin cambios respecto al estándar previo):**
 
@@ -1131,9 +1316,9 @@ Application/Wells/
      WellDetailDto.cs
 ```
 
-El código de referencia de las interfaces, dispatchers y decoradores está en el apéndice §19.7.
+El código de referencia de las interfaces, dispatchers y decoradores está en el apéndice §20.7.
 
-### 10.1.1 Postura "lean base"
+### 11.1.1 Postura "lean base"
 
 GOP 360° arranca usando únicamente las primitivas del .NET base para CQRS. Dependencias externas adicionales (mediador, decoradores avanzados, event bus) **se incorporan solo cuando un escenario concreto demuestre que el trabajo de implementarlo manualmente supera el costo de adoptar la librería**.
 
@@ -1160,7 +1345,7 @@ GOP 360° arranca usando únicamente las primitivas del .NET base para CQRS. Dep
 
 Esta postura aplica no solo al mediador — es el principio general que gobierna la expansión del stack de GOP 360°.
 
-### 10.2 Result Pattern
+### 11.2 Result Pattern
 
 **MUST:** los handlers retornan `Result<T>`, no lanzan excepciones para errores esperados.
 
@@ -1184,7 +1369,7 @@ public async Task<Result<WellDetailDto>> Handle(GetWellByIdQuery query, Cancella
 
 **MAY** lanzar excepciones para errores técnicos irrecuperables (base de datos caída, configuración inválida).
 
-### 10.3 Repository Pattern
+### 11.3 Repository Pattern
 
 **MUST:** cada agregado tiene su repositorio en `Infrastructure`. La interfaz vive en `Domain` o `Application`.
 
@@ -1203,7 +1388,7 @@ public interface IWellRepository
 - `DbContext` inyectado en controllers o handlers directamente.
 - Queries arbitrarias via LINQ en handlers — **MUST** estar encapsuladas en el repositorio o en queries dedicadas (Dapper/EF proyection).
 
-### 10.4 Unit of Work
+### 11.4 Unit of Work
 
 **MUST:** commands que modifican múltiples agregados se coordinan vía `IUnitOfWork`:
 
@@ -1213,7 +1398,7 @@ await _procedureRepo.UpdateAsync(procedure, ct);
 await _unitOfWork.SaveChangesAsync(ct);
 ```
 
-### 10.5 Domain Events
+### 11.5 Domain Events
 
 **MUST:** cambios de estado relevantes del dominio emiten eventos:
 
@@ -1228,7 +1413,7 @@ public class Well : AggregateRoot
 }
 ```
 
-#### 10.5.1 Alcance en V1 — estrictamente intra-servicio
+#### 11.5.1 Alcance en V1 — estrictamente intra-servicio
 
 **MUST:** en V1 los domain events son **exclusivamente intra-servicio**:
 
@@ -1240,7 +1425,7 @@ public class Well : AggregateRoot
 - Publicar domain events a infraestructura compartida (colas, tópicos) esperando que otros servicios los consuman.
 - Diseñar lógica inter-servicio asumiendo propagación asíncrona — no existe en V1.
 
-#### 10.5.2 Comunicación inter-servicio en V1
+#### 11.5.2 Comunicación inter-servicio en V1
 
 Cuando un servicio A necesita informar o consultar a un servicio B, **MUST** usarse **HTTP síncrono** con:
 
@@ -1261,19 +1446,19 @@ Cuando un servicio A necesita informar o consultar a un servicio B, **MUST** usa
 | `gop.procedures` | `gop.production` | Disparar creación/actualización de `ProducingFormation` al aprobar F103 | Alta | Reintento; compensación manual si falla |
 | Cualquier servicio | `gop.identity` | Resolver `assigned_contract_ids` cuando `contracts_truncated = true`, revocation list en ops críticas, validar matrícula | Alta | Denegar operación crítica si Identity no responde |
 
-> **Excepción — `gop.audit`:** no aparece como destino en la tabla anterior de forma intencional. `gop.audit` **no recibe escrituras inter-servicio**. Cada microservicio escribe su propia auditoría localmente a `audit.AuditLog` vía Audit.NET (ver §11.6). `gop.audit` solo **consume** esas tablas para consulta, búsqueda agregada, exportación y retención. Invocar a `gop.audit` para escribir está prohibido (ver §18.1).
+> **Excepción — `gop.audit`:** no aparece como destino en la tabla anterior de forma intencional. `gop.audit` **no recibe escrituras inter-servicio**. Cada microservicio escribe su propia auditoría localmente a `audit.AuditLog` vía Audit.NET (ver §12.6). `gop.audit` solo **consume** esas tablas para consulta, búsqueda agregada, exportación y retención. Invocar a `gop.audit` para escribir está prohibido (ver §19.1).
 
 **SHOULD:** minimizar estos caminos. Si una operación puede resolverse con datos cacheados o con lo que ya viene en el JWT, evitar la llamada HTTP.
 
-#### 10.5.3 Evolución a V2
+#### 11.5.3 Evolución a V2
 
 - **V2+:** se introduce event bus (RabbitMQ, Azure Service Bus o equivalente). Los domain events se promueven a **integration events** publicables entre servicios.
-- La migración **MUST** ser gradual: los escenarios críticos se mueven primero, y el HTTP síncrono se preserva como fallback durante al menos un release.
-- Integration events **MUST** versionarse independientemente del schema de dominio (contrato público entre servicios).
+- La migración **SHOULD** ser gradual: los escenarios críticos se mueven primero, y el HTTP síncrono se preserva como fallback durante al menos un release.
+- Cuando se introduzca event bus, los integration events **MUST** versionarse independientemente del schema de dominio (son contrato público entre servicios). Esta regla se activa al iniciar V2 y se desarrollará en una revisión futura del documento.
 
-### 10.6 Validación de DTOs
+### 11.6 Validación de DTOs
 
-**MUST:** todo DTO de command o query tiene su `AbstractValidator` en FluentValidation. Se registran automáticamente en el pipeline del dispatcher vía el decorador `ValidationBehavior` (ver §19.7).
+**MUST:** todo DTO de command o query tiene su `AbstractValidator` en FluentValidation. Se registran automáticamente en el pipeline del dispatcher vía el decorador `ValidationBehavior` (ver §20.7).
 
 ```csharp
 public class CreateWellValidator : AbstractValidator<CreateWellCommand>
@@ -1287,15 +1472,192 @@ public class CreateWellValidator : AbstractValidator<CreateWellCommand>
 }
 ```
 
-### 10.7 Specification Pattern
+### 11.7 Specification Pattern
 
 **MAY** usarse para queries complejas reutilizables. **SHOULD** usarse cuando la misma consulta aparece en 3+ lugares.
 
+### 11.8 Desacoplamiento de reglas de formularios y lógica de negocio
+
+#### 11.8.1 Propósito
+
+Esta sección establece un enfoque base y pragmático para mantener las **reglas de formularios** y la **lógica de negocio** desacopladas del código transaccional (controllers, handlers de POST/PUT, servicios). El objetivo es que el equipo tenga un lugar claro donde colocar este tipo de reglas cuando sea razonable, sin forzar el patrón en escenarios donde genere más complejidad de la que evita.
+
+**No es camisa de fuerza.** Este enfoque aplica a la mayoría de casos simples y medios. Casos complejos **MAY** quedar hardcodeados en código tipado cuando el intento de parametrizarlos genere más daño que beneficio, siempre documentando la decisión.
+
+#### 11.8.2 Dos principios rectores
+
+**Principio 1 — Reglas de formulario servidas desde el back, evaluadas en memoria por el front.**
+
+Las reglas de comportamiento de formularios (campos condicionales, valores por defecto, habilitación/deshabilitación, filtros de catálogos, validaciones simples) **SHOULD** definirse en el backend y exponerse al frontend en un único request al cargar el formulario. El frontend las evalúa en memoria mientras el usuario diligencia, sin enviar peticiones al back por cada cambio de campo.
+
+Esto evita que la lógica se duplique entre back y front, reduce chatter de red, y mejora la experiencia del usuario.
+
+**Principio 2 — Reglas de negocio desacopladas del código transaccional del backend.**
+
+La lógica de negocio consumida por endpoints POST, PUT, PATCH **SHOULD** mantenerse desacoplada de los handlers. Los handlers coordinan; las reglas viven en archivos o componentes dedicados dentro de la misma estructura del código fuente. Esto permite: versionamiento claro en Git, tests enfocados sobre las reglas, y evolución independiente del código transaccional.
+
+#### 11.8.3 Ubicación dentro del código fuente
+
+Cada microservicio organiza las reglas dentro de su proyecto `Application`, en una carpeta dedicada:
+
+```
+/src/Anh.Gop.{Service}.Application/
+  /Rules/
+    /forms/             ← reglas de formularios (consumidas por back y front)
+    /business/          ← reglas de lógica de negocio transaccional
+    /schemas/           ← JSON schemas para validar los archivos anteriores
+```
+
+**MUST:** las reglas viven en el repositorio del servicio (versionadas en Git), no en base de datos, salvo que un administrador no-técnico deba gestionarlas vía UI.
+
+#### 11.8.4 Formato preferido
+
+- **SHOULD:** usar archivos **JSON** como formato canónico para reglas declarativas. Razones: legibilidad, versionado limpio con diffs útiles, soporte nativo de herramientas, compatibilidad con el frontend.
+- **MAY:** usar YAML si un caso particular lo justifica por legibilidad superior.
+- **MAY:** usar clases C# planas (sin lógica, solo datos) cuando la regla sea específica de un único handler y no amerite archivo externo.
+
+#### 11.8.5 Exposición al frontend
+
+Cada formulario que siga el Principio 1 **SHOULD** exponer un endpoint estándar:
+
+```
+GET /api/v1/forms/{form-key}/rules
+```
+
+Que retorna las reglas del formulario en un formato consumible directamente por el frontend. El frontend las usa para renderizar condicionalmente sin más viajes al back.
+
+**MUST:** el backend **también** aplica estas mismas reglas al validar el payload recibido en el POST/PUT correspondiente. No se confía únicamente en validación del cliente.
+
+#### 11.8.6 Qué va y qué no va en los archivos de reglas
+
+**Va bien en archivos de reglas:**
+- Campos obligatorios condicionales (ej. "si pozo es offshore, lámina de agua es obligatoria").
+- Valores por defecto según otro campo (ej. "si Lahee A3, el campo se asigna a exploratorio").
+- Filtros de catálogos según contexto (ej. "mostrar solo contratos del operador actual").
+- Plazos, umbrales, rangos numéricos.
+- Habilitación/deshabilitación de campos según estado o rol.
+- Listas de anexos requeridos por forma.
+
+**No va en archivos de reglas (queda en código tipado):**
+- Cálculos complejos (construcción del UWI, transformación de coordenadas).
+- Reglas que requieren consultas a BD o servicios externos.
+- Validaciones cruzadas con lógica condicional profunda (más de 2-3 niveles).
+- Expresiones lógicas arbitrarias evaluadas dinámicamente.
+- Invariantes de dominio (esas viven en el agregado).
+
+**Regla heurística:** si la regla se puede expresar como "datos más referencias a códigos conocidos", va en archivo. Si requiere escribir una expresión para evaluar, va en código.
+
+#### 11.8.7 Referencias a código desde los archivos
+
+Cuando una regla necesita evaluar algo que no es un dato puro (por ejemplo, "aplicar el placeholder de campo exploratorio"), el archivo JSON **MUST** referenciar un **código simbólico** que tenga implementación C# tipada correspondiente.
+
+**Ejemplo válido en JSON:**
+```json
+{ "defaultValueFrom": "EXPLORATORY_FIELD_PLACEHOLDER" }
+```
+
+**Con implementación en código:**
+```csharp
+public class ExploratoryFieldResolver : IPlaceholderResolver { ... }
+```
+
+**PROHIBIDO** expresiones evaluables dinámicamente en los archivos (ej. `"expression": "fieldA > 5 && fieldB == 'X'"`). Si se necesita lógica, se implementa como clase C# y se referencia por código simbólico.
+
+#### 11.8.8 Validación al arranque
+
+**MUST:** los archivos de reglas se cargan y validan al arrancar el servicio contra su JSON schema. Si un archivo es inválido, o si referencia un código simbólico sin implementación, el servicio **no arranca**. Los errores de configuración deben manifestarse inmediatamente, no en runtime impredecible.
+
+#### 11.8.9 Relación con arquitectura Clean / hexagonal
+
+Este patrón es compatible y refuerza el aislamiento del dominio:
+
+- Los archivos JSON son **recursos de proyecto**.
+- El motor que los carga (`Anh.Gop.Shared.RulesEngine`) vive en **Infrastructure**.
+- Los tipos que representan las reglas parseadas viven en **Domain** o en la shared library.
+- El código de dominio consume las reglas a través de un **puerto** (`IRulesProvider`), nunca leyendo archivos directamente.
+
+**PROHIBIDO** leer archivos JSON, deserializar, o tocar el sistema de archivos desde código en Domain o desde handlers de Application.
+
+#### 11.8.10 Cuándo NO aplicar este patrón
+
+Este enfoque es ayuda, no obligación. Se **MAY** dejar una regla hardcodeada en código cuando:
+
+- La regla es **invariante de dominio** (debe vivir en la entidad).
+- La regla es **normativa estable con base legal citable** (queda en código con comentario de norma).
+- La regla es tan específica a un caso de uso único que externalizarla solo agrega indirección.
+- La regla tiene complejidad tal que expresarla declarativamente requeriría un mini-lenguaje propio.
+
+En esos casos, documentar brevemente la decisión (en código o ADR corto) y seguir. La sección siguiente (§11.8.10.1) define **cómo** dejar esa regla hardcodeada de forma mantenible — el objetivo es que una regla en código no se convierta en deuda técnica ni en "magia escondida" dentro de un handler o componente.
+
+#### 11.8.10.1 Cómo mantener una regla hardcodeada de forma sostenible
+
+Cuando se decide dejar una regla en código (back o front) por complejidad o por alguno de los criterios anteriores, **SHOULD** aplicarse las siguientes prácticas para que la regla siga siendo localizable, testeable y auditable:
+
+**1. Ubicación dedicada, nunca inline.**
+La regla vive en una **clase o función con nombre propio** que refleje la regla de negocio, no dentro del handler, del controller o de un componente UI.
+
+- Back: `Application/Rules/Business/{ContextName}/{RuleName}.cs` — aunque la regla no sea declarativa, ocupa el mismo árbol de carpetas que las reglas externalizadas (`Application/Rules/` de §11.8.3). Así, quien busque "reglas de negocio del servicio" encuentra todo en un solo lugar.
+- Front: `features/{module}/business-rules/{rule-name}.ts` — clase o función pura, importada por los componentes.
+
+Ejemplos de naming: `WellAbandonmentApprovalRule`, `F103ProducingFormationDerivationRule`, `ContractTransferEligibilityRule`. **Nombres prohibidos:** `Helper`, `Utils`, `Manager`, `Service` a secas.
+
+**2. Interfaz o contrato tipado.**
+La regla se expone detrás de una interfaz (`IAbandonmentApprovalRule`) o tipo de función (`type Evaluate = (input: FormData) => RuleResult`). Permite:
+- Inyectarla en handlers (testing con double).
+- Reemplazarla por una versión declarativa en el futuro sin tocar los consumidores (patrón Strategy).
+- Documentar el contrato (input → output) sin leer la implementación.
+
+**3. Test de comportamiento por cada rama significativa.**
+Una regla hardcodeada **MUST** tener su test dedicado cubriendo cada rama de decisión relevante (no solo el happy path). Estructura Given-When-Then. Si la regla se reescribe a formato declarativo más adelante, los tests sirven como oráculo de equivalencia.
+
+**4. Encabezado de procedencia.**
+En el archivo de la regla, un bloque de comentario fijo:
+
+```csharp
+// Regla de negocio: Aprobación de abandono de pozo (F107).
+// Base: Resolución ANH 40048 de 2015, art. 12 numerales 2–5.
+// Contraparte FE: apps/gop-web/src/app/features/wells/business-rules/well-abandonment-approval.rule.ts
+// Autor inicial: <equipo>  — Fecha: 2026-04
+// Motivo de hardcodeo: la evaluación combina estado del pozo, tipo de formación y
+// antigüedad del operador con ramas anidadas que un formato declarativo oscurecería.
+// Revisión sugerida: cuando la resolución se actualice o si emergen >2 reglas similares.
+```
+
+El encabezado permite al próximo desarrollador entender en 30 segundos por qué la regla vive en código y qué hay que revisar si la normativa cambia.
+
+**5. Pareja BE ↔ FE declarada explícitamente.**
+Si la misma regla se evalúa en back y en front (caso típico de validación preventiva en la UI), **MUST** cumplirse:
+
+- El back es la fuente de verdad (línea roja §11.8.11 — no duplicar lógica). El FE implementa una versión **equivalente** para mejorar UX, nunca para reemplazar la validación del back.
+- Ambos archivos se referencian mutuamente en el encabezado (como en el ejemplo arriba).
+- Si la regla declarativa (§11.8.2) aplica parcialmente, el FE **SHOULD** apoyarse en las porciones declarativas y dejar hardcodeado solo lo realmente complejo, documentando la delimitación.
+- Cada cambio en una rama implica PR coordinado actualizando ambas implementaciones y sus tests. CI **SHOULD** tener un check (p. ej. test de contrato compartido) que falle si una versión evoluciona sin la otra.
+
+**6. Registro en el catálogo interno del servicio.**
+Cada microservicio **SHOULD** mantener un archivo `Application/Rules/BUSINESS-RULES.md` (o equivalente en el FE) que liste:
+
+| Código | Nombre | Ubicación (BE) | Ubicación (FE) | Base normativa | Última revisión |
+|---|---|---|---|---|---|
+
+Funciona como índice. Sin este registro, las reglas hardcodeadas se vuelven invisibles — nadie recuerda que existen hasta que se rompen.
+
+**7. Revisión periódica.**
+En cada refinamiento de arquitectura (o al menos una vez por release mayor), el equipo revisa el catálogo de reglas hardcodeadas y evalúa si alguna cumple ya las condiciones para externalizarse al formato declarativo (§11.8.2). Las reglas hardcodeadas son **aceptables pero no permanentes por diseño** — se quedan mientras la complejidad lo justifique.
+
+**Resumen:** una regla hardcodeada no deja de ser una regla de negocio. Aplican los mismos principios que a una regla declarativa — nombre propio, test, documentación, referencia cruzada BE/FE y trazabilidad normativa — solo que la **forma** de expresarla es código en lugar de JSON.
+
+#### 11.8.11 Líneas rojas
+
+- **NUNCA** construir un motor de reglas Turing-completo con evaluación dinámica de expresiones desde archivos o BD.
+- **NUNCA** cargar reglas desde archivos sin validar schema al arranque.
+- **NUNCA** duplicar lógica de validación entre back y front. La fuente de verdad es el back; el front consume.
+- **NUNCA** leer archivos de reglas directamente desde código de Domain o desde handlers. Siempre vía puerto inyectado.
+
 ---
 
-## 11. Acceso a datos y persistencia
+## 12. Acceso a datos y persistencia
 
-### 11.1 EF Core y proyecciones
+### 12.1 EF Core y proyecciones
 
 **MUST:**
 - Queries de lectura usan `.Select()` explícito hacia el DTO, sin materializar la entidad completa.
@@ -1315,7 +1677,7 @@ var items = await _ctx.Wells
 
 **PROHIBIDO** `_ctx.Wells.ToList()` seguido de `.Select(...)` en memoria — trae todo, desperdicia SQL.
 
-### 11.2 SQL crudo
+### 12.2 SQL crudo
 
 **MAY** usarse Dapper o SQL crudo para:
 - Queries geoespaciales complejas.
@@ -1326,43 +1688,62 @@ var items = await _ctx.Wells
 
 **PROHIBIDO** concatenación de strings SQL con inputs del usuario — solo parámetros. Siempre.
 
-### 11.3 Migraciones
+### 12.3 Migraciones
 
-**MUST:** DbUp sobre archivos SQL numerados y versionados en Git:
+Las migraciones usan **dos herramientas complementarias** con responsabilidades distintas:
+
+#### EF Core Migrations — schema
+
+**MUST:** el schema de tablas, columnas e índices se gestiona con EF Core Migrations. EF genera las migraciones automáticamente al comparar el modelo C# con el snapshot anterior.
+
+- Versionado automático: ID generado por EF como `<timestamp>_<nombre>`, registrado en `__EFMigrationsHistory`.
+- No hay colisión entre desarrolladores.
+- Incluye `Up()` y `Down()` para rollback.
+
+#### DbUp — SQL que EF no genera
+
+**MUST:** stored procedures, triggers, vistas complejas y transformaciones de datos legado se gestionan con DbUp sobre archivos SQL numerados en Git:
 
 ```
-Infrastructure/Migrations/
-  0001_CreateWellTable.sql
-  0002_AddUwiColumn.sql
+Infrastructure/Migrations/Scripts/
+  0001_CreateUwiValidationProc.sql
+  0002_CreateWellAuditTrigger.sql
   ...
 ```
 
+DbUp registra los scripts ejecutados en `SchemaVersions` y en cada deploy corre únicamente los que aún no están en esa tabla.
+
+Cada script se nombra con prefijo numérico secuencial y descripción breve en inglés.
+
+#### Orden de ejecución en deploy
+
+1. EF Core Migrations (`__EFMigrationsHistory`) — schema primero.
+2. DbUp scripts (`SchemaVersions`) — objetos que dependen del schema.
+
 **PROHIBIDO:**
-- Editar una migración ya aplicada.
+- Editar una migración EF o un script DbUp ya aplicado en cualquier ambiente.
 - Ejecutar SQL manual en ambientes superiores a desarrollo local.
-- Deploys que omitan correr migraciones.
+- Deploys que omitan correr cualquiera de los dos pasos.
 
-Cada migración se nombra con prefijo numérico secuencial y descripción breve en inglés.
-
-### 11.4 Transacciones
+### 12.4 Transacciones
 
 **MUST:** commands que modifican múltiples agregados usan transacción explícita (via UnitOfWork o `IDbContextTransaction`).
 
-**MUST:** transacciones cortas — ninguna transacción abierta durante >5 segundos en producción.
+**SHOULD:** transacciones cortas. Como referencia operativa, una transacción que permanezca abierta >5 segundos en producción es sospechosa y se monitorea con alerta (ver §17). La regla se hace cumplir por observabilidad y revisión de performance, no por bloqueo de PR — hay casos legítimos de batches o migraciones que la exceden puntualmente.
 
-### 11.5 Concurrencia
+### 12.5 Concurrencia
 
 **MUST:** entidades con alto riesgo de concurrencia (ej. `Procedure`, `Well`) tienen columna `RowVersion` / `Timestamp` para concurrency optimista.
 
-### 11.6 Auditoría — escritura automática con Audit.NET
+### 12.6 Auditoría — escritura automática con Audit.NET
 
-#### 11.6.1 Responsabilidad local, no centralizada
+#### 12.6.1 Responsabilidad local, no centralizada
 
 **MUST:** la **escritura** de registros de auditoría es responsabilidad de **cada microservicio** sobre su propio esquema `audit.*`. **PROHIBIDO** invocar al microservicio `gop.audit` para escribir registros de auditoría — eso introduce acoplamiento síncrono, latencia y un punto único de falla en el camino crítico de cada mutación.
 
 El microservicio `gop.audit` existe únicamente para **consulta, búsqueda, exportación, retención y consolidación** de datos de auditoría. Es un "lector" especializado, no un "escritor" centralizado.
 
-#### 11.6.2 Herramienta estándar
+#### 12.6.2 Herramienta estándar
 
 **MUST:** usar **Audit.NET** con el proveedor **Audit.EntityFramework.Core** para capturar mutaciones sobre entidades de dominio. Esta combinación:
 
@@ -1374,7 +1755,7 @@ El microservicio `gop.audit` existe únicamente para **consulta, búsqueda, expo
 
 **PROHIBIDO** escribir interceptores EF Core manuales para auditoría cuando Audit.NET cubre el caso. Si existe una necesidad que Audit.NET no resuelve, documentarla en ADR antes de salir del estándar.
 
-#### 11.6.3 Configuración de referencia
+#### 12.6.3 Configuración de referencia
 
 La configuración base vive en `Anh.Gop.Shared.Infrastructure` y se consume en cada servicio en el arranque:
 
@@ -1409,7 +1790,7 @@ public static class AuditConfiguration
 // DbContext → hereda de Audit.EntityFramework.AuditDbContext o se marca con [AuditInclude]
 ```
 
-#### 11.6.4 Campos obligatorios del registro
+#### 12.6.4 Campos obligatorios del registro
 
 Cada registro escrito por Audit.NET **MUST** incluir como mínimo:
 
@@ -1419,7 +1800,7 @@ Cada registro escrito por Audit.NET **MUST** incluir como mínimo:
 - `PreviousValueJson`, `NewValueJson` (solo campos modificados para `Update`).
 - `MachineName`, `ServiceName` (qué microservicio emitió el registro).
 
-#### 11.6.5 Entidades excluidas
+#### 12.6.5 Entidades excluidas
 
 **MUST NOT** auditarse (ruido / datos sensibles):
 - Tablas de cache o staging en `integration`.
@@ -1428,7 +1809,7 @@ Cada registro escrito por Audit.NET **MUST** incluir como mínimo:
 
 La exclusión se declara con `[AuditIgnore]` en la entidad o via configuración global.
 
-#### 11.6.6 Contrato de esquema y topología de BD en V1
+#### 12.6.6 Contrato de esquema y topología de BD en V1
 
 **Topología de BD en V1:** los microservicios **comparten instancia física** de SQL Server 2022 pero cada uno opera sobre su **esquema dedicado** (`core`, `ops`, `prod`, `procedure`, `workflow`, `identity`, `integration`). El aislamiento es **lógico, no físico**, impuesto por permisos de base de datos:
 
@@ -1447,37 +1828,37 @@ Esta decisión es **pragmática para V1** on-premise: reduce operación (una sol
 
 ---
 
-## 12. Validación, sanitización y hardening de seguridad
+## 13. Validación, sanitización y hardening de seguridad
 
 Esta sección consolida los controles transversales de seguridad aplicables a **todos** los microservicios. El énfasis es **hardening automático** — los controles que OWASP Top 10 exige se materializan en middleware, analyzers y configuración declarativa, no en código repetido por feature.
 
-### 12.0 Principio rector — "seguro por defecto, invisible al desarrollador"
+### 13.0 Principio rector — "seguro por defecto, invisible al desarrollador"
 
 **MUST:** todo control de OWASP Top 10 que sea automatizable se implementa en la shared library **`Anh.Gop.Shared.Security`** y se activa con una sola llamada (`AddGopSecurityHardening()` / `UseGopSecurityHardening()`) en el `Program.cs` de cada microservicio.
 
 El desarrollador de feature **no** toma decisiones de seguridad transversales. Sólo:
 
-1. Declara la sensibilidad del dato vía `[DataClassification(Level = ...)]` (ver §7.10).
-2. Declara las policies de autorización por endpoint (ver §7.5–§7.7).
+1. Declara la sensibilidad del dato vía `[DataClassification(Level = ...)]` (ver §8.10).
+2. Declara las policies de autorización por endpoint (ver §8.5–§8.7).
 3. Usa los clientes HTTP, serializers y helpers provistos por la shared lib.
 
 Los controles residuales que sí requieren decisión por spec (qué endpoints exigen MFA, qué recursos requieren rate-limit estricto, clasificación específica de entidades) se documentan en cada **spec funcional**, no en esta constitución.
 
-### 12.1 Validación y sanitización de entrada *(A03)*
+### 13.1 Validación y sanitización de entrada *(A03)*
 
 **MUST:**
 - Todo input externo pasa por **FluentValidation**.
 - Strings se validan en longitud máxima y patrón cuando aplique.
 - IDs se validan positivos y existentes cuando relevante.
 - Fechas se validan en rango razonable.
-- La deserialización rechaza campos no mapeados (ver §12.9).
+- La deserialización rechaza campos no mapeados (ver §13.9).
 
 **PROHIBIDO:**
 - Trust en inputs del cliente para lógica de autorización (ej. "el cliente me dice que es admin, le creo").
 - Deserialización de tipos polimórficos sin `[JsonDerivedType]` / `KnownTypes` explícito.
-- Concatenación de inputs en filtros LDAP (ver §12.11).
+- Concatenación de inputs en filtros LDAP (ver §13.11).
 
-### 12.2 Security Headers por defecto *(A05 — Security Misconfiguration)*
+### 13.2 Security Headers por defecto *(A05 — Security Misconfiguration)*
 
 **MUST:** el middleware `UseGopSecurityHardening()` fija en **toda** respuesta HTTP:
 
@@ -1494,56 +1875,61 @@ Los controles residuales que sí requieren decisión por spec (qué endpoints ex
 
 **Costo dev:** cero. Aplicado globalmente por la shared library.
 
-### 12.3 HTTPS y cookies seguras *(A02, A05)*
+### 13.3 HTTPS y cookies seguras *(A02, A05)*
 
 **MUST:**
 - `app.UseHttpsRedirection()` + `app.UseHsts()` habilitados en todos los servicios (no-Development).
 - Toda cookie emitida (Antiforgery, sesiones administrativas de Swagger): `HttpOnly=true`, `Secure=true`, `SameSite=Strict`.
 - `CookiePolicyOptions` configurado con defaults seguros por la shared library.
 
-### 12.4 Antiforgery / CSRF *(A01, A03)*
+### 13.4 Antiforgery / CSRF *(A01, A03)*
 
 **MUST:**
 - Endpoints de **mutación** invocables desde navegador con cookie llevan filtro `[ValidateAntiForgeryToken]` (aplicado globalmente por la shared lib).
 - APIs puras **JWT-Bearer** (sin cookie) están exentas de antiforgery — el modelo de token en header elimina la superficie CSRF. La shared lib distingue ambos modos vía convención de esquema de autenticación y documenta la exención.
 
-### 12.5 Rate limiting y protección anti-abuso *(A04, A07)*
+### 13.5 Rate limiting y protección anti-abuso *(A04, A07)*
 
-**MUST:** usar `Microsoft.AspNetCore.RateLimiting` (built-in .NET 10) con policies predefinidas en la shared library:
+**MUST:** todo microservicio aplica rate limiting usando `Microsoft.AspNetCore.RateLimiting` (built-in .NET 10) con el conjunto de policies predefinidas en `Anh.Gop.Shared.Security`. No se admiten endpoints públicos sin policy asignada.
 
-| Policy | Límite | Aplica a |
+**SHOULD:** los valores iniciales del proyecto (ajustables por configuración en cada entorno, sin ADR):
+
+| Policy | Límite de referencia | Aplica a |
 |---|---|---|
 | `auth-strict` | 5 intentos/min por IP + usuario | `POST /auth/login`, refresh de token, reset de password |
 | `api-standard` | 60 req/min por usuario autenticado | Endpoints de mutación por defecto |
 | `export-heavy` | 5 exports/hora por usuario | Endpoints de exportación masiva |
 | `read-standard` | 300 req/min por usuario | Endpoints de consulta |
 
+Los umbrales son guías iniciales; pueden endurecerse o relajarse por entorno a partir de métricas reales, documentando el ajuste en la configuración del servicio. Lo que no se admite es **desactivar** la policy sin ADR.
+
 nginx mantiene rate limit por **IP** (defensa de borde); la app mantiene rate limit por **identidad** (JWT `sub`). Ambos son complementarios.
 
-### 12.6 Políticas de password, lockout y MFA *(A07)*
+### 13.6 Políticas de password, lockout y MFA *(A07)*
 
-Configuradas una sola vez en `gop.identity` vía `IdentityOptions`:
+Configuradas una sola vez en `gop.identity` vía `IdentityOptions`. Los **principios** son MUST; los **valores concretos** son SHOULD y viven en la política operativa del servicio (configurables por entorno), conforme a la normativa ANH vigente.
 
-**Password:**
-- Mínimo 12 caracteres.
-- MUST contener mayúscula, minúscula, dígito y símbolo.
-- Historial de últimos 5; no permitir reutilización.
-- Expiración 90 días (con notificación a los 14 y 7 días previos).
-
-**Lockout:**
-- 5 intentos fallidos → bloqueo 15 min.
-- Contador dual: por usuario y por IP (IP se acumula aunque usuario rote).
-
-**MFA:**
-- **MUST** para roles `ANH_Admin`, `ANH_Fiscalizador`, `Operator_Admin` y cualquier rol con capabilities de firma o aprobación.
-- Shared policy `[RequireMfa]` se aplica por atributo en endpoints sensibles (firmas, aprobaciones de abandono, cambios de rol).
-
-**Sesión:**
-- Idle timeout: 30 min.
-- Absolute timeout: 8 h.
+**MUST (principios):**
+- Existe política de password con mínimo de longitud y complejidad (mayúscula, minúscula, dígito, símbolo).
+- Existe historial de passwords para evitar reutilización inmediata.
+- Existe mecanismo de lockout por intentos fallidos con contador dual (usuario + IP).
 - Refresh token rotation con detección de reuso → invalidación de familia.
+- MFA obligatorio para roles `ANH_Admin`, `ANH_Fiscalizador`, `Operator_Admin` y cualquier rol con capabilities de firma o aprobación. Shared policy `[RequireMfa]` se aplica por atributo en endpoints sensibles (firmas, aprobaciones de abandono, cambios de rol).
 
-### 12.7 Gestión de secretos y configuración *(A02, A05)*
+**SHOULD (valores iniciales del proyecto, revisables por política operativa):**
+
+| Aspecto | Valor inicial |
+|---|---|
+| Longitud mínima de password | 12 caracteres |
+| Historial | 5 últimas passwords |
+| Expiración | 90 días (con notificación a los 14 y 7 días previos) |
+| Lockout | 5 intentos fallidos → bloqueo 15 min |
+| Idle timeout de sesión | 30 min |
+| Absolute timeout de sesión | 8 h |
+
+> Estos valores se alinean con la política vigente de ANH. Si la ANH adopta NIST SP 800-63B u otra guía (p. ej. sin expiración forzosa de password), la política se actualiza sin necesidad de cambiar este documento.
+
+### 13.7 Gestión de secretos y configuración *(A02, A05)*
 
 **PROHIBIDO:**
 - Secretos en `appsettings*.json`, repositorio git o logs.
@@ -1559,11 +1945,11 @@ Configuradas una sola vez en `gop.identity` vía `IdentityOptions`:
 - `AddUserSecrets()` usado **sólo** en entorno `Development`.
 - La shared library provee un `StartupSecretsValidator` que **falla el arranque** del servicio si detecta valores placeholder (`"CHANGEME"`, `"secret"`, `"password"`, connection strings con `Password=` literal). Esto previene despliegues con config por defecto.
 
-### 12.8 Criptografía *(A02 — Cryptographic Failures)*
+### 13.8 Criptografía *(A02 — Cryptographic Failures)*
 
 **MUST:**
 - Hashing de passwords: ASP.NET Core Identity default (PBKDF2 HMAC-SHA512, ≥100k iteraciones).
-- Datos marcados `[DataClassification(Level ≥ 3)]` se persisten con **Always Encrypted** de SQL Server 2022 (ver §7.10 y `data-model.md` §10).
+- Datos marcados `[DataClassification(Level ≥ 3)]` se persisten con **Always Encrypted** de SQL Server 2022 (ver §8.10 y `data-model.md` §11).
 - Firma de JWT: **RS256** con rotación anual de keys; keys privadas en Key Vault (nunca en repo).
 - TLS 1.2 mínimo en todos los endpoints; TLS 1.3 preferido.
 
@@ -1572,7 +1958,7 @@ Configuradas una sola vez en `gop.identity` vía `IdentityOptions`:
 - Modo ECB para cifrado simétrico.
 - Random no criptográfico (`System.Random`) para tokens, salts o ids de sesión — usar `RandomNumberGenerator`.
 
-### 12.9 Deserialización segura *(A08 — Software and Data Integrity Failures)*
+### 13.9 Deserialización segura *(A08 — Software and Data Integrity Failures)*
 
 **MUST:**
 - Serializer único: **`System.Text.Json`**.
@@ -1584,13 +1970,13 @@ Configuradas una sola vez en `gop.identity` vía `IdentityOptions`:
 - XML: si una integración externa lo impone, `XmlReaderSettings` MUST tener `DtdProcessing = Prohibit` y `XmlResolver = null` (previene XXE).
 
 **PROHIBIDO:**
-- `Newtonsoft.Json` salvo excepción vía ADR aprobado (motivo: superficie histórica de vulnerabilidades en deserialización polimórfica con `TypeNameHandling`).
+- Introducir `Newtonsoft.Json` como serializer primario de la aplicación (motivo: superficie histórica de vulnerabilidades en deserialización polimórfica con `TypeNameHandling`). Las dependencias transitivas que lo arrastren se toleran siempre que no se use directamente desde código propio; si un SDK de terceros lo exige para interoperar con el sistema externo, se documenta la excepción en el PR. Ver también §19.3.
 - `BinaryFormatter` (deprecado y removido por Microsoft, superficie RCE).
 - Deserialización de tipos no controlados (`object`, `dynamic`) desde entrada externa.
 
-### 12.10 SSRF en clientes HTTP salientes *(A10 — Server-Side Request Forgery)*
+### 13.10 SSRF en clientes HTTP salientes *(A10 — Server-Side Request Forgery)*
 
-GOP integra con sistemas externos (SGC, BMC/Helix, ContrAktor, Azure DevOps — ver §15) y con otros microservicios internos (§10.5). **Toda** llamada saliente es vector potencial de SSRF.
+GOP integra con sistemas externos (SGC, BMC/Helix, ContrAktor, Azure DevOps — ver §16) y con otros microservicios internos (§11.5). **Toda** llamada saliente es vector potencial de SSRF.
 
 **MUST:**
 - Toda llamada HTTP saliente usa `IHttpClientFactory` con un cliente nombrado **registrado en la shared library**.
@@ -1605,9 +1991,9 @@ GOP integra con sistemas externos (SGC, BMC/Helix, ContrAktor, Azure DevOps — 
 - URLs de destino construidas con input del usuario sin pasar por validación del handler.
 - `MaxAutomaticRedirections > 3` sin justificación.
 
-### 12.11 Protección contra inyección LDAP/AD *(A03)*
+### 13.11 Protección contra inyección LDAP/AD *(A03)*
 
-Al integrar con Active Directory para SSO (ver §15.3):
+Al integrar con Active Directory para SSO (ver §16.3):
 
 **MUST:**
 - Queries LDAP usan `System.DirectoryServices.Protocols` con **parámetros**, nunca concatenación.
@@ -1618,7 +2004,7 @@ Al integrar con Active Directory para SSO (ver §15.3):
 - Filtros LDAP construidos con interpolación de strings (`$"(cn={userInput})"`).
 - Bind con credenciales del usuario final — el servicio usa una cuenta técnica y valida por separado.
 
-### 12.12 Supply chain y componentes vulnerables *(A06, A08)*
+### 13.12 Supply chain y componentes vulnerables *(A06, A08)*
 
 Automatizado en CI — cero esfuerzo por desarrollador:
 
@@ -1635,7 +2021,7 @@ Automatizado en CI — cero esfuerzo por desarrollador:
 
 **Escalation de CVE:** cualquier CVE High/Critical publicado contra una dependencia en uso activa un issue de tracking automático con SLA de 7 días para fix o mitigación documentada.
 
-### 12.13 Analyzers de seguridad en build *(transversal)*
+### 13.13 Analyzers de seguridad en build *(transversal)*
 
 Activados **warning-as-error** en `Directory.Build.props` raíz — aplica a todos los proyectos sin configuración adicional:
 
@@ -1645,11 +2031,11 @@ Activados **warning-as-error** en `Directory.Build.props` raíz — aplica a tod
 
 Los desarrolladores no configuran analyzers por proyecto — el `Directory.Build.props` heredado hace cumplir el estándar automáticamente.
 
-### 12.14 Error handling que no filtra información *(A05, A09)*
+### 13.14 Error handling que no filtra información *(A05, A09)*
 
 **MUST:** middleware global `UseExceptionHandler` de la shared library:
 
-- Loggea el error con stack trace completo + `correlation_id` (ver §13.2) en el log estructurado.
+- Loggea el error con stack trace completo + `correlation_id` (ver §14.2) en el log estructurado.
 - Devuelve al cliente **ProblemDetails RFC 7807** con:
   - `type`, `title`, `status`, `correlation_id` únicamente.
   - **Sin** stack trace, **sin** detalle técnico interno, **sin** nombres de tabla/columna.
@@ -1659,26 +2045,26 @@ Los desarrolladores no configuran analyzers por proyecto — el `Directory.Build
 - `try/catch` que devuelva `ex.ToString()` o `ex.Message` directamente al cliente en endpoints de producción.
 - Páginas de error por defecto de ASP.NET Core (Developer Exception Page) habilitadas fuera de `Development`.
 
-### 12.15 Mapa OWASP Top 10 → sección
+### 13.15 Mapa OWASP Top 10 → sección
 
 | OWASP 2021 | Cubierto en |
 |---|---|
-| A01 — Broken Access Control | §7 (autorización 5 capas), §12.4 (CSRF), §18.3 |
-| A02 — Cryptographic Failures | §12.3 (HTTPS), §12.7 (secretos), §12.8 (crypto), §7.10 (clasificación) |
-| A03 — Injection | §12.1 (validación), §12.4 (CSRF), §12.11 (LDAP), §18.2 (SQL), §11 (EF Core) |
-| A04 — Insecure Design | §3 (principios), §10 (patrones), §12.5 (rate limit), §12.0 (principio rector) |
-| A05 — Security Misconfiguration | §12.2 (headers), §12.3 (HTTPS), §12.7 (secretos), §12.14 (errors) |
-| A06 — Vulnerable Components | §4.1 (licencias), §12.12 (supply chain) |
-| A07 — Auth Failures | §7.1 (auth), §12.5 (rate limit), §12.6 (password/MFA/lockout) |
-| A08 — Integrity Failures | §12.9 (deserialización), §12.12 (signing, SBOM) |
-| A09 — Logging/Monitoring | §11.6 (Audit.NET), §13 (observabilidad), §12.14 (errors) |
-| A10 — SSRF | §12.10 (SSRF handler) |
+| A01 — Broken Access Control | §8 (autorización 5 capas), §13.4 (CSRF), §19.3 |
+| A02 — Cryptographic Failures | §13.3 (HTTPS), §13.7 (secretos), §13.8 (crypto), §8.10 (clasificación) |
+| A03 — Injection | §13.1 (validación), §13.4 (CSRF), §13.11 (LDAP), §19.2 (SQL), §12 (EF Core) |
+| A04 — Insecure Design | §3 (principios), §11 (patrones), §13.5 (rate limit), §13.0 (principio rector) |
+| A05 — Security Misconfiguration | §13.2 (headers), §13.3 (HTTPS), §13.7 (secretos), §13.14 (errors) |
+| A06 — Vulnerable Components | §5.1 (licencias), §13.12 (supply chain) |
+| A07 — Auth Failures | §8.1 (auth), §13.5 (rate limit), §13.6 (password/MFA/lockout) |
+| A08 — Integrity Failures | §13.9 (deserialización), §13.12 (signing, SBOM) |
+| A09 — Logging/Monitoring | §12.6 (Audit.NET), §14 (observabilidad), §13.14 (errors) |
+| A10 — SSRF | §13.10 (SSRF handler) |
 
 ---
 
-## 13. Observabilidad
+## 14. Observabilidad
 
-### 13.1 Logging estructurado
+### 14.1 Logging estructurado
 
 **MUST:** Serilog configurado con:
 - Output a consola (desarrollo) y archivos/Seq/ApplicationInsights (producción).
@@ -1699,7 +2085,7 @@ _logger.LogInformation("Well {WellId} created by user {UserId} in tenant {Tenant
 - Log de tokens, passwords, datos sensibles, payloads completos de request/response de endpoints que traen datos personales.
 - Log de excepciones sin contexto (`_logger.LogError(ex)` sin mensaje).
 
-### 13.2 Correlation ID
+### 14.2 Correlation ID
 
 **MUST:** cada request entrante tiene un `X-Correlation-Id`:
 - Si viene del cliente, se preserva.
@@ -1707,13 +2093,13 @@ _logger.LogInformation("Well {WellId} created by user {UserId} in tenant {Tenant
 - Se propaga en llamadas salientes a otros servicios.
 - Aparece en todos los logs de esa request.
 
-### 13.3 Health Checks
+### 14.3 Health Checks
 
 **MUST:** cada servicio expone:
 - `/health/live` — el proceso está vivo (siempre 200 si responde).
 - `/health/ready` — está listo para recibir tráfico (verifica DB, dependencias críticas).
 
-### 13.4 Métricas
+### 14.4 Métricas
 
 **SHOULD:** exponer métricas vía endpoint `/metrics` en formato Prometheus, incluyendo:
 - Counter de requests por endpoint y status.
@@ -1722,31 +2108,35 @@ _logger.LogInformation("Well {WellId} created by user {UserId} in tenant {Tenant
 
 ---
 
-## 14. Pruebas
+## 15. Pruebas
 
-### 14.1 Cobertura mínima
+### 15.1 Cobertura mínima
 
-**MUST:** cobertura de unit tests ≥ 80% (obligatorio por Estándar de Codificación).
+**MUST:** existe suite de tests automatizados ejecutada en CI que cubre los comportamientos críticos de §15.2–15.5.
 
-### 14.2 Unit tests
+**SHOULD:** cobertura de unit tests ≥ 80% (alineado con el Estándar de Codificación ANH). El porcentaje es una señal, no un fin — se prefiere **cobertura de comportamientos** (los listados en §15.2–15.5) sobre cobertura puramente numérica. Un PR por debajo del umbral se discute, no se bloquea automáticamente, si los comportamientos críticos están cubiertos.
 
-**MUST** para:
+### 15.2 Unit tests
+
+**MUST** tests que cubran los siguientes comportamientos:
 - Lógica de `Domain` (entidades, value objects, domain services).
-- Command/Query handlers en `Application` (implementaciones de `ICommandHandler<,>` / `IQueryHandler<,>`).
-- Validators de FluentValidation.
+- Command/Query handlers en `Application` (implementaciones de `ICommandHandler<,>` / `IQueryHandler<,>`) — al menos caminos happy y principales de error.
+- Validators de FluentValidation — reglas no triviales.
 
 **SHOULD** tests de comportamiento (Given-When-Then) más que de implementación.
 
-### 14.3 Integration tests
+### 15.3 Integration tests
 
 **MUST** para:
 - Endpoints críticos (crear pozo, radicar forma, aprobar).
 - Flujos de autorización.
 - Migraciones de BD.
 
-**MUST:** usar `WebApplicationFactory` con base de datos SQL Server real en contenedor o LocalDb — **nunca** tests unitarios mockeando EF.
+**SHOULD:** usar `WebApplicationFactory` con base de datos SQL Server real en contenedor o LocalDb para tests que ejerciten EF Core y queries.
 
-### 14.4 tSQLt
+**MAY:** mockear `DbContext` o `IDbContextFactory` en unit tests puntuales cuando el test valida lógica que es independiente del ORM (ej. un guard clause en un handler antes de tocar el repositorio). En todo caso, los comportamientos que dependen de SQL real se cubren con integration tests.
+
+### 15.4 tSQLt
 
 **MUST** para:
 - Stored procedures críticos.
@@ -1754,18 +2144,53 @@ _logger.LogInformation("Well {WellId} created by user {UserId} in tenant {Tenant
 - Vistas complejas.
 - Lógica de migración de datos legado.
 
-### 14.5 Migration tests
+### 15.5 Migration tests
 
 **MUST** crear una suite específica en `Tests.Integration/Migrations/` que:
 - Carga dataset del GOP legado en BD de test.
 - Ejecuta scripts de migración.
 - Valida contadores, integridad referencial, y reglas de negocio críticas sobre los datos migrados.
 
+### 15.6 Architecture tests (NetArchTest.Rules)
+
+**MUST:** existe un proyecto `Tests.Architecture` en cada servicio que ejecuta en CI y verifica las siguientes reglas estructurales.
+
+#### Reglas obligatorias
+
+| Regla | Descripción |
+|---|---|
+| Domain sin dependencias hacia afuera | Clases en `*.Domain.*` no referencian `*.Application.*` ni `*.Infrastructure.*` |
+| Application sin Infrastructure | Clases en `*.Application.*` no referencian `*.Infrastructure.*` |
+| Controllers sin lógica de dominio | Clases en `*.Api.Controllers.*` no referencian tipos de `*.Domain.*` directamente (solo DTOs/commands/queries) |
+| Handlers solo en Application | Implementaciones de `ICommandHandler<,>` e `IQueryHandler<,>` residen en `*.Application.*` |
+| Repositorios solo en Infrastructure | Implementaciones de `IRepository<>` residen en `*.Infrastructure.*` |
+| DbContext no en Controllers | Clases en `*.Api.*` no referencian `DbContext` ni derivados |
+
+#### Ubicación y convención
+
+```
+<servicio>/
+  Tests.Architecture/
+    <Servicio>.Architecture.Tests.csproj   ← referencia NetArchTest.Rules
+    LayerDependencyTests.cs
+    NamingConventionTests.cs               (SHOULD)
+```
+
+#### Ejecución
+
+**MUST:** corren en el mismo paso de CI que los unit tests. Un fallo de architecture test bloquea el merge igual que un unit test roto.
+
+**SHOULD:** los mensajes de fallo identifican el tipo infractor (`FailingTypes`) para facilitar corrección.
+
+#### Alcance
+
+Las reglas de esta sección verifican las **líneas rojas de §19.1**. Cualquier línea roja arquitectónica nueva añadida a §19.1 **SHOULD** tener su test de arquitectura correspondiente.
+
 ---
 
-## 15. Integraciones con sistemas externos
+## 16. Integraciones con sistemas externos
 
-### 15.1 Sistemas a integrar
+### 16.1 Sistemas a integrar
 
 | Sistema | Propósito | Método | Criticidad |
 |---|---|---|---|
@@ -1779,7 +2204,7 @@ _logger.LogInformation("Well {WellId} created by user {UserId} in tenant {Tenant
 | ControlDoc | Radicación documental | API | Alta |
 | SMTP institucional | Notificaciones | SMTP | Media |
 
-### 15.2 Patrón de integración
+### 16.2 Patrón de integración
 
 **MUST:**
 - Toda integración vive en `Infrastructure` detrás de una interfaz en `Application`.
@@ -1790,7 +2215,7 @@ _logger.LogInformation("Well {WellId} created by user {UserId} in tenant {Tenant
 
 **MUST:** toda llamada se registra en `audit.IntegrationLog` con: sistema, endpoint, payload enviado, respuesta, status, duración, error.
 
-### 15.3 Autenticación a sistemas externos
+### 16.3 Autenticación a sistemas externos
 
 **PROHIBIDO** credenciales en código o `appsettings.json`. **MUST** usar:
 - Azure Key Vault (en Azure).
@@ -1799,9 +2224,9 @@ _logger.LogInformation("Well {WellId} created by user {UserId} in tenant {Tenant
 
 ---
 
-## 16. Concerns transversales entre microservicios
+## 17. Concerns transversales entre microservicios
 
-### 16.1 Principios
+### 17.1 Principios
 
 **MUST:**
 - Cada servicio es dueño exclusivo de sus datos (escritura).
@@ -1813,7 +2238,7 @@ _logger.LogInformation("Well {WellId} created by user {UserId} in tenant {Tenant
 - Llamadas HTTP síncronas entre servicios para operaciones de autorización rutinaria.
 - Replicación de lógica de negocio entre servicios.
 
-### 16.2 Referencia de datos compartidos
+### 17.2 Referencia de datos compartidos
 
 **Reference Data (catálogos y entidades transversales):**
 
@@ -1825,7 +2250,7 @@ _logger.LogInformation("Well {WellId} created by user {UserId} in tenant {Tenant
 - **V1:** `gop.core` expone endpoint de bootstrap. Otros servicios consultan una vez al inicio (en health check de ready) y cachean en memoria hasta reinicio.
 - **V2+:** igual, pero con invalidación por evento.
 
-### 16.3 Shared Library `Anh.Gop.Shared.Auth`
+### 17.3 Shared Library `Anh.Gop.Shared.Auth`
 
 **MUST** contener:
 - `JwtValidationMiddleware` — valida firma y expiración.
@@ -1837,9 +2262,9 @@ _logger.LogInformation("Well {WellId} created by user {UserId} in tenant {Tenant
 
 **Versionado semántico estricto.** Bump mayor obliga a migración coordinada.
 
-### 16.4 Criterio claro de consulta a Identity Service
+### 17.4 Criterio claro de consulta a Identity Service
 
-Ya documentado en §7.8. Se repite aquí por conveniencia:
+Ya documentado en §8.8. Se repite aquí por conveniencia:
 
 - **Datos del JWT:** se leen directo, sin consulta.
 - **`contracts_truncated = true`:** consulta a Identity con cache.
@@ -1850,94 +2275,258 @@ Ya documentado en §7.8. Se repite aquí por conveniencia:
 
 ---
 
-## 17. Reverse Proxy y entrada al sistema (nginx)
+## 18. Reverse Proxy y entrada al sistema (nginx)
 
 Dado despliegue on-premise, nginx es el reverse proxy frente a los microservicios.
 
-### 17.1 Responsabilidades de nginx (V1)
+### 18.1 Responsabilidades de nginx (V1)
 
 **MAY:**
 - Terminación TLS.
 - Routing por path a los microservicios correspondientes.
-- **Rate limiting por IP** (defensa de borde). Complementa el rate limit por identidad que aplica la app (ver §12.5).
+- **Rate limiting por IP** (defensa de borde). Complementa el rate limit por identidad que aplica la app (ver §13.5).
 - Compresión gzip.
 - Logging de acceso.
-- **HSTS duplicado** como defensa redundante. El header canónico lo emite la app (ver §12.2); si nginx también lo emite, ambos deben coincidir.
+- **HSTS duplicado** como defensa redundante. El header canónico lo emite la app (ver §13.2); si nginx también lo emite, ambos deben coincidir.
 
-> **Nota:** los **security headers** (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `CSP`) los emite la **aplicación** vía `Anh.Gop.Shared.Security` (§12.2), no nginx. Esto garantiza que los headers sean consistentes independientemente de la topología de despliegue (reverse proxy en V1, API gateway en V2+) y que se prueben con tests de integración junto al resto del pipeline.
+> **Nota:** los **security headers** (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `CSP`) los emite la **aplicación** vía `Anh.Gop.Shared.Security` (§13.2), no nginx. Esto garantiza que los headers sean consistentes independientemente de la topología de despliegue (reverse proxy en V1, API gateway en V2+) y que se prueben con tests de integración junto al resto del pipeline.
 
-### 17.2 Funciones fuera del alcance de nginx
+### 18.2 Funciones fuera del alcance de nginx
 
 nginx en V1 **no** realiza las siguientes funciones — éstas quedan en otros componentes del sistema (no son prohibiciones sino descripción del reparto de responsabilidades):
 
 - **Validación de JWT:** cada microservicio valida el token localmente vía `Anh.Gop.Shared.Auth`. V1 carece de gateway full-featured; se evaluará en V2+.
 - **Transformación de tokens:** el JWT emitido por `gop.identity` llega intacto al servicio destino.
-- **Circuit breaking avanzado:** resiliencia inter-servicio se implementa en el cliente HTTP de cada servicio (Polly, ver §16).
+- **Circuit breaking avanzado:** resiliencia inter-servicio se implementa en el cliente HTTP de cada servicio (Polly, ver §17).
 
-### 17.3 Network isolation
+### 18.3 Network isolation
 
 **MUST:** los microservicios no son accesibles directamente desde internet. Solo nginx tiene IP pública. Los servicios escuchan en red interna.
 
 **SHOULD:** los microservicios validan que la conexión entrante viene de nginx (por IP o por red). Esto es defensa en profundidad — no reemplaza validar el JWT.
 
+### 18.4 Routing, puertos internos y componentes de infraestructura
+
+#### 18.4.1 Tabla de routing nginx → microservicio
+
+Todos los paths son relativos al dominio público del sistema (ej. `https://gop.internal`).
+
+| Path nginx | Microservicio | Puerto interno | Notas |
+|---|---|---|---|
+| `/idp/*` | `gop-idp` | `5001` | Incluye `/.well-known/openid-configuration` — nginx **MUST** pasar este path sin modificarlo |
+| `/identity/*` | `gop-identity` | `5011` | JWT exchange, usuarios, roles, permisos |
+| `/core/*` | `gop-core` | `5021` | Operadores, contratos, catálogos |
+| `/operations/*` | `gop-operations` | `5031` | Pozos, Series 100 |
+| `/production/*` | `gop-production` | `5041` | Series 200, balances |
+| `/procedures/*` | `gop-procedures` | `5051` | Trámites, workflow, firmas |
+| `/integration/*` | `gop-integration` | `5061` | Staging, sincronización externos |
+| `/audit/*` | `gop-audit` | `5071` | Consulta de auditoría |
+
+Los puertos `5001`, `5011`, `5021`... corresponden a HTTPS local en desarrollo. En producción los servicios escuchan en puertos fijados por el equipo de infraestructura detrás de nginx.
+
+#### 18.4.2 Discovery endpoint de gop-idp
+
+El path `/.well-known/openid-configuration` es un path estándar OIDC **dentro del dominio de `gop-idp`**. nginx lo enruta junto con el resto de `/idp/*`:
+
+```nginx
+location /idp/ {
+    proxy_pass http://gop-idp:5001/;
+    # El trailing slash normaliza el path: /idp/.well-known/... → /.well-known/...
+}
+```
+
+**MUST:** `gop-identity` y cualquier otro consumidor de `gop-idp` **MUST** resolver endpoints usando Discovery — nunca hardcodear rutas. La `Authority` se configura por variable de entorno o appsettings:
+
+```json
+// appsettings.json
+{
+  "Idp": {
+    "Authority": "https://gop.internal/idp"
+  }
+}
+```
+
+En producción se cambia `Authority` al endpoint del AD de ANH. Sin cambios de código.
+
+#### 18.4.3 Seq — agregación de logs
+
+Seq es el receptor central de logs estructurados de Serilog. **No** es un microservicio GOP — es infraestructura interna de operaciones.
+
+| Componente | Puerto | Acceso |
+|---|---|---|
+| Seq UI | `5080` | Interno — **MUST NOT** exponerse vía nginx ni internet |
+| Seq ingestion | `5341` | Interno — solo accesible desde la red de microservicios |
+
+**MUST:** Seq no tiene IP pública. El acceso a la UI es exclusivo para administradores de plataforma vía red interna o VPN.
+
+**MUST:** todos los microservicios configuran Serilog con sink a Seq usando la URL interna (`http://seq:5341`). La configuración proviene de `Anh.Gop.Shared.Infrastructure` (ver §6.4).
+
+### 18.5 Comunicación inter-servicio
+
+#### 18.5.1 Protocolo
+
+En V1, **toda comunicación entre microservicios GOP es HTTP síncrono**. No se introduce broker de mensajería (RabbitMQ, Azure Service Bus, etc.) en V1. La mensajería asíncrona se evalúa en V2+ si aparece necesidad concreta de desacoplamiento temporal o alta carga.
+
+**MUST:** toda llamada HTTP saliente de un microservicio **MUST** usar `IHttpClientFactory` con cliente nombrado — nunca `new HttpClient()`. El cliente nombrado se registra con `SsrfProtectionHandler` de `Anh.Gop.Shared.Security` (ver §13.10).
+
+**MUST:** las URLs de otros servicios se leen desde configuración (`appsettings.json` + variables de entorno). **PROHIBIDO** hardcodear URLs de servicios internos en código.
+
+```json
+// appsettings.json — sección de servicios internos
+{
+  "Services": {
+    "Identity": "http://gop-identity:5011",
+    "Core":     "http://gop-core:5021",
+    "Operations": "http://gop-operations:5031",
+    "Production": "http://gop-production:5041",
+    "Procedures": "http://gop-procedures:5051",
+    "Integration": "http://gop-integration:5061",
+    "Audit":    "http://gop-audit:5071"
+  }
+}
+```
+
+En Docker Compose los nombres de contenedor actúan como DNS interno (`gop-core`, `gop-identity`, etc.) y resuelven automáticamente dentro de la red `gop-internal`.
+
+#### 18.5.2 Quién llama a quién
+
+El frontend llama directamente a cada microservicio a través de nginx. Los microservicios **no** se encadenan para resolver una request del usuario, salvo los casos listados a continuación:
+
+| Llamante | Destino | Motivo |
+|---|---|---|
+| `gop-identity` | `gop-idp` (Discovery) | Validar `id_token` al hacer Token Exchange |
+| `gop-procedures` | `gop-core` | Obtener datos del contrato/operador para un trámite |
+| `gop-operations` | `gop-core` | Obtener datos de campo/bloque/cluster para un pozo |
+| `gop-production` | `gop-core` | Obtener datos de contrato para reportes de producción |
+| `gop-integration` | `gop-core`, `gop-operations`, `gop-production` | Sincronización de datos externos (SOLAR, AVM, VAF) |
+
+**PROHIBIDO** que un microservicio llame a otro fuera de esta tabla sin documentar el motivo en el PR y actualizar esta sección.
+
+#### 18.5.3 Procesos en background (gop-integration)
+
+`gop-integration` usa `IHostedService` (.NET BackgroundService) para los jobs de sincronización con sistemas externos. No requiere broker externo — el proceso corre dentro del mismo host del microservicio.
+
+#### 18.5.4 Flujo de autenticación completo
+
+```
+① Frontend → nginx /idp/* → gop-idp          (redirect OIDC, login form)
+② gop-idp  → Frontend                          (auth code)
+③ Frontend → gop-identity POST /auth/token-exchange  {id_token}
+④ gop-identity → gop-idp /.well-known/...     (Discovery, clave pública)
+⑤ gop-identity → Frontend                     (GOP JWT con roles/módulos)
+⑥ Frontend → nginx /core/* → gop-core         (GOP JWT en Authorization header)
+   Frontend → nginx /ops/*  → gop-operations   (ídem)
+   ...
+```
+
+El GOP JWT contiene los roles del usuario. El frontend lee los roles del token para mostrar/ocultar módulos — **sin llamada adicional al servidor** para cargar la navegación.
+
+### 18.6 Docker Compose — desarrollo local
+
+El archivo `docker-compose.yml` en la raíz del proyecto (fuera de los repos de microservicios) define el entorno de desarrollo local completo.
+
+#### 18.6.1 Servicios y puertos
+
+| Servicio | Imagen / Proyecto | Puerto host | Puerto contenedor |
+|---|---|---|---|
+| `gop-idp` | build local | `5010` | `5010` |
+| `gop-identity` | build local | `5011` | `5011` |
+| `gop-core` | build local | `5021` | `5021` |
+| `gop-operations` | build local | `5031` | `5031` |
+| `gop-production` | build local | `5041` | `5041` |
+| `gop-procedures` | build local | `5051` | `5051` |
+| `gop-integration` | build local | `5061` | `5061` |
+| `gop-audit` | build local | `5071` | `5071` |
+| `sqlserver` | `mcr.microsoft.com/mssql/server:2022-latest` | `1433` | `1433` |
+| `seq` | `datalust/seq:latest` | `5080` (UI), `5341` (ingesta) | `80`, `5341` |
+| `nginx` | `nginx:alpine` | `80`, `443` | `80`, `443` |
+
+#### 18.6.2 Red interna
+
+Todos los servicios pertenecen a la red Docker `gop-internal` (bridge). Los servicios **no** se exponen directamente en el host salvo los puertos declarados en la tabla anterior.
+
+```yaml
+networks:
+  gop-internal:
+    driver: bridge
+```
+
+#### 18.6.3 Variables de entorno por servicio
+
+Cada microservicio lee su configuración de variables de entorno en Docker Compose, que sobreescriben `appsettings.json`. Las variables sensibles (passwords, secrets) se gestionan con `.env` local — **MUST NOT** commitearse al repositorio.
+
+```yaml
+# Ejemplo: gop-core en docker-compose.yml
+gop-core:
+  environment:
+    - ASPNETCORE_ENVIRONMENT=Development
+    - ConnectionStrings__DefaultConnection=Server=sqlserver;...
+    - Services__Identity=http://gop-identity:5011
+    - Services__Idp=http://gop-idp:5010
+```
+
+#### 18.6.4 Exposición con Cloudflare Tunnel / ngrok
+
+Para exponer el entorno local externamente (demos, pruebas de OIDC con redirect URIs HTTPS) se usa Cloudflare Tunnel o ngrok apuntando al puerto `443` de nginx. **MUST NOT** exponerse puertos individuales de microservicios — todo el tráfico externo pasa por nginx.
+
 ---
 
-## 18. Líneas rojas consolidadas
+## 19. Líneas rojas consolidadas
 
-Esta lista es vinculante. Cualquier PR que transgreda una línea roja **MUST** rechazarse.
+Esta lista es vinculante. Cualquier PR que transgreda una línea roja **MUST** rechazarse. Transgredirla de forma excepcional requiere ADR previo con aprobación de arquitectura, conforme a §0.1. Las reglas de aquí son **invariantes arquitectónicos y de seguridad** — reglas operativas o de estilo viven en sus secciones respectivas.
 
-### 18.1 Arquitectura
+### 19.1 Arquitectura
 
 - **NUNCA** `Domain` depende de `Application` o `Infrastructure`.
 - **NUNCA** `Application` depende de `Infrastructure`.
 - **NUNCA** un servicio escribe en la BD de otro.
 - **NUNCA** lógica de dominio en controllers o stored procedures (salvo migración legado).
 - **NUNCA** referencias entre bounded contexts que violen el mapa de dependencias del modelo de datos.
-- **NUNCA** un servicio llama a `gop.audit` para escribir auditoría. La escritura es **siempre local** vía Audit.NET sobre `audit.AuditLog` (ver §11.6).
+- **NUNCA** un servicio llama a `gop.audit` para escribir auditoría. La escritura es **siempre local** vía Audit.NET sobre `audit.AuditLog` (ver §12.6).
 
-### 18.2 Datos
+### 19.2 Datos
 
-- **NUNCA** `SELECT *`.
-- **NUNCA** concatenación SQL con inputs.
+- **NUNCA** concatenación SQL con inputs (SQL injection).
 - **NUNCA** queries sobre entidades de tenant sin filtro de tenant.
 - **NUNCA** editar migraciones ya aplicadas.
 - **NUNCA** `DbContext` directo en controllers.
 
-### 18.3 Seguridad
+> **Nota:** `SELECT *` es un **anti-patrón a evitar** (SHOULD), no una línea roja — en queries internas o scripts puntuales puede ser aceptable. La regla arquitectónica vive en §12.1.
+
+### 19.3 Seguridad
 
 - **NUNCA** credenciales en código, config files sin cifrar, o logs.
 - **NUNCA** stack traces en responses de producción.
-- **NUNCA** `[AllowAnonymous]` fuera de endpoints de autenticación.
+- **NUNCA** `[AllowAnonymous]` fuera de endpoints de autenticación y endpoints de infraestructura explícitamente listados (health checks, métricas, OpenAPI en entornos no productivos). El listado vive en la configuración de la shared library y se revisa por arquitectura.
 - **NUNCA** log de tokens, passwords, datos sensibles de usuario.
 - **NUNCA** confiar en headers `X-User-*` sin validar JWT.
-- **NUNCA** inserción manual a `audit.AuditLog` desde código de dominio o aplicación. La escritura de auditoría se realiza **exclusivamente** a través del pipeline de Audit.NET + `Audit.EntityFramework.Core` (ver §11.6).
-- **NUNCA** `new HttpClient()` directo para llamadas salientes. Usar `IHttpClientFactory` con cliente nombrado registrado en `Anh.Gop.Shared.Security`, que incluye `SsrfProtectionHandler` (ver §12.10).
-- **NUNCA** `Newtonsoft.Json` salvo excepción vía ADR aprobado. Serializer único: `System.Text.Json` con defaults endurecidos (ver §12.9).
-- **NUNCA** algoritmos criptográficos débiles: MD5, SHA-1, DES, 3DES, RC4, modo ECB. `System.Random` no es aceptable para tokens/salts/ids de sesión — usar `RandomNumberGenerator` (ver §12.8).
-- **NUNCA** secretos en `appsettings*.json`, repositorio git o logs. Usar variables de entorno o Key Vault (ver §12.7).
-- **NUNCA** filtros LDAP construidos con interpolación de strings — usar `LdapFilterEncoder.Encode(input)` (ver §12.11).
-- **NUNCA** `Developer Exception Page` habilitada fuera de entorno `Development` (ver §12.14).
+- **NUNCA** inserción manual a `audit.AuditLog` desde código de dominio o aplicación. La escritura de auditoría se realiza **exclusivamente** a través del pipeline de Audit.NET + `Audit.EntityFramework.Core` (ver §12.6).
+- **NUNCA** `new HttpClient()` directo para llamadas salientes. Usar `IHttpClientFactory` con cliente nombrado registrado en `Anh.Gop.Shared.Security`, que incluye `SsrfProtectionHandler` (ver §13.10).
+- **NUNCA** introducir `Newtonsoft.Json` como serializer primario de la aplicación. Serializer único: `System.Text.Json` con defaults endurecidos (ver §13.9). Si una dependencia transitiva lo arrastra, se tolera siempre que no se use directamente desde código propio; si un SDK de terceros lo exige para interoperar, se documenta la excepción (sin ADR salvo que se convierta en patrón).
+- **NUNCA** algoritmos criptográficos débiles: MD5, SHA-1, DES, 3DES, RC4, modo ECB. `System.Random` no es aceptable para tokens/salts/ids de sesión — usar `RandomNumberGenerator` (ver §13.8).
+- **NUNCA** secretos en `appsettings*.json`, repositorio git o logs. Usar variables de entorno o Key Vault (ver §13.7).
+- **NUNCA** filtros LDAP construidos con interpolación de strings — usar `LdapFilterEncoder.Encode(input)` (ver §13.11).
+- **NUNCA** `Developer Exception Page` habilitada fuera de entorno `Development` (ver §13.14).
 
-### 18.4 API
+### 19.4 API
 
 - **NUNCA** breaking changes en versión publicada.
 - **NUNCA** devolver entidades de dominio o modelos de EF directamente.
-- **NUNCA** endpoints sin documentación OpenAPI en producción.
+- **NUNCA** endpoints públicos de negocio sin documentación OpenAPI en producción (los endpoints de infraestructura están exentos; ver §10.8).
 - **NUNCA** endpoints GET con efectos secundarios.
-- **NUNCA** envelopes propietarios tipo `{ status, message, data }` / `{ success, result, error }` en responses de éxito. El contrato es: **body = DTO** (o `204 No Content`), **errores = ProblemDetails RFC 7807**, **metadatos = headers HTTP** (`Location`, `ETag`, `X-Pagination`). Ver §9.6.
-- **NUNCA** fechas fuera de ISO 8601, enums como entero, o propiedades JSON que no sean `camelCase` en contratos públicos (ver §9.9).
-- **NUNCA** archivos binarios embebidos como base64 en JSON salvo excepción documentada < 100 KB (ver §9.9.5).
+- **NUNCA** envelopes propietarios tipo `{ status, message, data }` / `{ success, result, error }` en responses de éxito. El contrato es: **body = DTO** (o `204 No Content`), **errores = ProblemDetails RFC 7807**, **metadatos = headers HTTP** (`Location`, `ETag`, `X-Pagination`). Ver §10.6.
+- **NUNCA** fechas fuera de ISO 8601, enums como entero, o propiedades JSON que no sean `camelCase` en contratos públicos (ver §10.9).
+- **NUNCA** archivos binarios embebidos como base64 en JSON salvo excepción documentada < 100 KB (ver §10.9.5).
 
-### 18.5 Testing
+### 19.5 Testing e higiene de CI
 
-- **NUNCA** push a main con tests rotos.
-- **NUNCA** `#pragma` deshabilitando analyzers sin comentario justificando.
+Las reglas de disciplina de CI (no pushear con tests rotos, no silenciar analyzers sin justificación, etc.) viven en la **política de CI y en los analyzers configurados como warning-as-error** (ver §13.13 y §15), no aquí. Se enforzan por pipeline, no por revisión manual de líneas rojas.
 
 ---
 
-## 19. Apéndices
+## 20. Apéndices
 
-### 19.1 Capabilities iniciales (permisos)
+### 20.1 Capabilities iniciales (permisos)
 
 Esta es la lista inicial sugerida. Se expande con cada módulo que se implemente.
 
@@ -1976,7 +2565,7 @@ Esta es la lista inicial sugerida. Se expande con cada módulo que se implemente
 - `Operator.Users.CanManage` (OperatorAdmin)
 - `Operator.ContractAccess.CanAssign`
 
-### 19.2 Roles iniciales y agrupación de capabilities
+### 20.2 Roles iniciales y agrupación de capabilities
 
 | Rol | Contexto | Capabilities agrupadas |
 |---|---|---|
@@ -1992,9 +2581,9 @@ Esta es la lista inicial sugerida. Se expande con cada módulo que se implemente
 | `OperatorGeologist` | Operador | Forms.F10x.CanSignGeologist |
 | `OperatorPetroleumEngineer` | Operador | Forms.F10x.CanSignEngineer, Forms.F20x.CanSign |
 
-**Nota sobre alcance (Contract Scope) de roles ANH:** los roles `AnhOperationsEngineer`, `AnhGeologist` y `AnhProductionSupervisor` **típicamente** se asignan con `UserRole.ContractId` específico (por fiscalizador asignado a contratos concretos), no en modo global. Solo `AnhAdministrator` y `AnhGopAdministrator` reciben `UserRole` con `ContractId = NULL` (alcance global ANH). Ver §7.4.1 para la tabla de resolución de alcance.
+**Nota sobre alcance (Contract Scope) de roles ANH:** los roles `AnhOperationsEngineer`, `AnhGeologist` y `AnhProductionSupervisor` **típicamente** se asignan con `UserRole.ContractId` específico (por fiscalizador asignado a contratos concretos), no en modo global. Solo `AnhAdministrator` y `AnhGopAdministrator` reciben `UserRole` con `ContractId = NULL` (alcance global ANH). Ver §8.4.1 para la tabla de resolución de alcance.
 
-### 19.3 Plantilla de Command Handler
+### 20.3 Plantilla de Command Handler
 
 ```csharp
 public record CreateWellCommand(
@@ -2052,7 +2641,7 @@ public class CreateWellHandler : ICommandHandler<CreateWellCommand, Result<long>
 }
 ```
 
-### 19.4 Plantilla de Query Handler con proyección
+### 20.4 Plantilla de Query Handler con proyección
 
 ```csharp
 public record GetWellsQuery(
@@ -2113,20 +2702,42 @@ public class GetWellsHandler : IQueryHandler<GetWellsQuery, Result<PagedResult<W
 }
 ```
 
-### 19.5 Clasificación de entidades para exposición (Tipo A/B/C/D)
+### 20.5 Clasificación de entidades para exposición (Tipo A/B/C/D)
 
-Esta tabla aplica la regla de §8.2 a las entidades principales del modelo. El **Tipo** determina el **tratamiento de exposición** y por tanto el diseño de endpoints y DTOs.
+Esta tabla aplica la regla de §9.2 a las entidades principales del modelo. El **Tipo** determina el **tratamiento de exposición** y por tanto el diseño de endpoints y DTOs.
 
-**Recordatorio de tipos (§8.2):**
+**Recordatorio de tipos (§9.2):**
 - **A** — Catálogo global pequeño (<100 items, estable). Bootstrap endpoint + precarga en sesión.
 - **B** — Catálogo específico de feature (media, estable). Endpoint dedicado, lazy load.
 - **C** — Entidad transversal (miles de items, cambian). Búsqueda paginada + byId con cache.
 - **D** — Entidad transaccional de dominio. Listado resumen + detalle limpio (patrón Summary/Detail).
 
-#### 19.5.1 Catálogos — esquema `catalog`
+#### 20.5.1 Catálogos — esquema `catalog`
+
+**Estándar PPDM 3.9.** El schema `catalog` es el repositorio de datos maestros del sistema y **MUST** seguir el estándar **PPDM 3.9 (Professional Petroleum Data Management)** para todas las tablas de industria petrolera. PPDM usa prefijos de tabla para identificar dominios (`BA_*` Business Associate, `WELL_*` pozos, `PROD_*` producción, `STRAT_*` estratigrafía, `LAND_*` contratos, `PPDM_*` sistema).
+
+**Regla de extensión GOP:** las tablas PPDM **NUNCA** reciben columnas adicionales propias del sistema GOP. Las extensiones se implementan en tablas separadas con el sufijo `_GOP_CONFIG` o `_GOP_EXT` que referencian la tabla PPDM por su clave `varchar(40)`. Ejemplo: `catalog.BA_AUTH_CONFIG` extiende `catalog.BUSINESS_ASSOCIATE` con configuración de autenticación GOP sin tocar la tabla PPDM.
+
+```sql
+-- Correcto: extensión en tabla separada
+catalog.BA_AUTH_CONFIG
+  Id        int           PK IDENTITY
+  BaId      varchar(40)   NOT NULL → BUSINESS_ASSOCIATE.BA_ID
+  AuthType  varchar(20)   NOT NULL  -- "IdP" | "Ldap"
+  AuthUrl   varchar(500)
+
+-- PROHIBIDO: agregar columnas GOP a tabla PPDM
+catalog.BUSINESS_ASSOCIATE
+  BA_ID       varchar(40) PK
+  AuthType    varchar(20)  ← NUNCA
+```
+
+**Separación futura:** si la ANH exige una base de datos PPDM dedicada e independiente, el schema `catalog` se migra a un servidor separado. El único cambio de código es el connection string en `gop-core`. Los demás servicios acceden al catálogo via API de `gop-core`, no directamente a la DB.
 
 | Entidad | Tipo | Tratamiento |
 |---|---|---|
+| `BUSINESS_ASSOCIATE` | A | Bootstrap session — PPDM 3.9, `BA_ID varchar(40)` |
+| `BA_AUTH_CONFIG` | A | Bootstrap session — extensión GOP de `BUSINESS_ASSOCIATE` |
 | `WellState` | A | Bootstrap session |
 | `WellStateTransition` | A | Bootstrap session (leída junto con `WellState`) |
 | `AngleType` (Catalog) | A | Bootstrap session |
@@ -2147,7 +2758,7 @@ Esta tabla aplica la regla de §8.2 a las entidades principales del modelo. El *
 
 > **Nota de seguimiento:** entidades marcadas Tipo **A** con volumen esperado >50 ítems (p.ej. `WellStateTransition`, que puede crecer con cambios normativos de la matriz de transiciones) se **reevaluarán tras el primer release**. Si superan ese umbral en producción, se migrarán a Tipo **B** (lazy load del feature de pozos) mediante ADR dedicado. No requiere cambio en V1.
 
-#### 19.5.2 Entidades transversales — esquema `core`
+#### 20.5.2 Entidades transversales — esquema `core`
 
 | Entidad | Tipo | Tratamiento |
 |---|---|---|
@@ -2160,7 +2771,7 @@ Esta tabla aplica la regla de §8.2 a las entidades principales del modelo. El *
 | `Block` | C | Search paginada + byId con cache |
 | `ClusterLocation` | C | Search paginada + byId con cache |
 
-#### 19.5.3 Operaciones de pozo — esquema `ops`
+#### 20.5.3 Operaciones de pozo — esquema `ops`
 
 | Entidad | Tipo | Tratamiento |
 |---|---|---|
@@ -2179,7 +2790,7 @@ Esta tabla aplica la regla de §8.2 a las entidades principales del modelo. El *
 | `IdopData` | D | `IdopSummaryDto` + `IdopDetailDto` |
 | `IdocData` | D | Análogo |
 
-#### 19.5.4 Producción — esquema `prod`
+#### 20.5.4 Producción — esquema `prod`
 
 | Entidad | Tipo | Tratamiento |
 |---|---|---|
@@ -2196,7 +2807,7 @@ Esta tabla aplica la regla de §8.2 a las entidades principales del modelo. El *
 | `TankMovement` | — | Sub-recurso de `Tank` |
 | `Form201Data` — `Form217Data` | D | Patrón Summary/Detail |
 
-#### 19.5.5 Workflow y trámites — esquemas `workflow`, `procedure`
+#### 20.5.5 Workflow y trámites — esquemas `workflow`, `procedure`
 
 | Entidad | Tipo | Tratamiento |
 |---|---|---|
@@ -2216,7 +2827,7 @@ Esta tabla aplica la regla de §8.2 a las entidades principales del modelo. El *
 | `ProcedureNotification` | — | Sub-recurso `/procedures/{id}/notifications` |
 | `ProcedureSpatialValidation` | — | Sub-recurso `/procedures/{id}/spatial-validations` |
 
-#### 19.5.6 Identidad — esquema `identity`
+#### 20.5.6 Identidad — esquema `identity`
 
 | Entidad | Tipo | Tratamiento |
 |---|---|---|
@@ -2228,7 +2839,7 @@ Esta tabla aplica la regla de §8.2 a las entidades principales del modelo. El *
 | `ProfessionalLicense` | — | Sub-recurso `/users/{id}/licenses` |
 | `UserSession` | — | Admin-only listing y revoke |
 
-#### 19.5.7 Auditoría e integración — esquemas `audit`, `integration`
+#### 20.5.7 Auditoría e integración — esquemas `audit`, `integration`
 
 Estos esquemas no se exponen como recursos CRUD al frontend. Su acceso es:
 
@@ -2242,10 +2853,10 @@ Estos esquemas no se exponen como recursos CRUD al frontend. Su acceso es:
 **Reglas derivadas:**
 
 - Una entidad marcada con `—` en "Tipo" es **sub-entidad** del agregado y **NUNCA** se expone como recurso raíz. Se accede únicamente vía el recurso padre.
-- Cambiar el Tipo de una entidad requiere ADR (conforme §8.2).
+- Cambiar el Tipo de una entidad requiere ADR (conforme §9.2).
 - Entidades nuevas que se agreguen al modelo **MUST** clasificarse explícitamente en esta tabla al momento de incorporarse.
 
-### 19.6 Plantilla de Controller
+### 20.6 Plantilla de Controller
 
 ```csharp
 [ApiController]
@@ -2313,11 +2924,11 @@ public class WellsController : ControllerBase
 }
 ```
 
-### 19.7 CQRS sin mediador externo — código de referencia de `Anh.Gop.Shared.Cqrs`
+### 20.7 CQRS sin mediador externo — código de referencia de `Anh.Gop.Shared.Cqrs`
 
 Esta shared library encapsula todo el andamiaje CQRS del proyecto. No depende de MediatR ni de ningún otro mediador. Licencia: código propio.
 
-#### 19.7.1 Interfaces marcador y de handler
+#### 20.7.1 Interfaces marcador y de handler
 
 ```csharp
 // Anh.Gop.Shared.Cqrs/ICommand.cs
@@ -2342,7 +2953,7 @@ public interface IQueryHandler<in TQuery, TResult>
 }
 ```
 
-#### 19.7.2 Dispatchers
+#### 20.7.2 Dispatchers
 
 ```csharp
 // Anh.Gop.Shared.Cqrs/ICommandDispatcher.cs
@@ -2389,7 +3000,7 @@ internal sealed class QueryDispatcher : IQueryDispatcher
 
 > **Nota sobre `HandlerInvokerCache`:** compila una vez por tipo un delegate `Func<object, object, CancellationToken, Task<TResult>>` vía `MethodInfo.CreateDelegate`, evitando el costo de `Invoke` por reflexión en caliente. Implementación en la shared library.
 
-#### 19.7.3 Registro automático por assembly scan
+#### 20.7.3 Registro automático por assembly scan
 
 ```csharp
 // Anh.Gop.Shared.Cqrs/ServiceCollectionExtensions.cs
@@ -2428,7 +3039,7 @@ Uso en `Program.cs` de cada microservicio:
 builder.Services.AddGopCqrs(typeof(CreateWellCommand).Assembly);
 ```
 
-#### 19.7.4 Decoradores (cross-cutting concerns) — patrón manual
+#### 20.7.4 Decoradores (cross-cutting concerns) — patrón manual
 
 Los decoradores se escriben manualmente. Para V1 se proveen tres:
 
@@ -2509,9 +3120,9 @@ services.AddScoped<ICommandDispatcher>(sp =>
 });
 ```
 
-Cuando haya ≥3 decoradores y la composición se vuelva tediosa, se evaluará la adopción de **Scrutor** (MIT) para declarar `services.Decorate<ICommandDispatcher, ValidatingCommandDispatcher>()` de forma fluida. Ver §10.1.1.
+Cuando haya ≥3 decoradores y la composición se vuelva tediosa, se evaluará la adopción de **Scrutor** (MIT) para declarar `services.Decorate<ICommandDispatcher, ValidatingCommandDispatcher>()` de forma fluida. Ver §11.1.1.
 
-#### 19.7.5 Tests unitarios mínimos
+#### 20.7.5 Tests unitarios mínimos
 
 La shared library **MUST** publicarse con al menos estos tests:
 
@@ -2522,11 +3133,11 @@ La shared library **MUST** publicarse con al menos estos tests:
 - `ValidatingCommandDispatcher_lanza_ValidationException_si_invalid`.
 - `LoggingCommandDispatcher_loggea_success_y_failure`.
 
-### 19.8 Flujo de Token Exchange — IdP externo + JWT de aplicación
+### 20.8 Flujo de Token Exchange — IdP externo + JWT de aplicación
 
-Este apéndice documenta, paso a paso, el flujo operativo del patrón de §7.1.1. Sirve como material de referencia para auditorías, onboarding y conversaciones con stakeholders de seguridad.
+Este apéndice documenta, paso a paso, el flujo operativo del patrón de §8.1.1. Sirve como material de referencia para auditorías, onboarding y conversaciones con stakeholders de seguridad.
 
-#### 19.8.1 Modo federado (producción, usuario con cuenta en IdP de ANH)
+#### 20.8.1 Modo federado (producción, usuario con cuenta en IdP de ANH)
 
 ```
 ┌─────────────┐         ┌──────────────┐        ┌────────────────┐        ┌──────────────────┐
@@ -2565,7 +3176,7 @@ Este apéndice documenta, paso a paso, el flujo operativo del patrón de §7.1.1
        │                       │                         │       - resuelve User    │
        │                       │                         │         local por mapping│
        │                       │                         │       - resuelve claims  │
-       │                       │                         │         GOP (§7.2)       │
+       │                       │                         │         GOP (§8.2)       │
        │                       │                         │       - emite JWT interno│
        │                       │                         │         firmado RS256    │
        │                       │                         │       - emite refresh    │
@@ -2585,7 +3196,7 @@ Este apéndice documenta, paso a paso, el flujo operativo del patrón de §7.1.1
 - Paso 10: `gop.identity` realiza el **Token Exchange (RFC 8693)** — no propaga el `id_token` ni el `access_token` del IdP.
 - Paso 11+: los microservicios GOP sólo ven el JWT interno; su clave de validación es la pública de `gop.identity`.
 
-#### 19.8.2 Modo local (testing inicial, usuarios fuera del IdP de ANH, cuentas técnicas)
+#### 20.8.2 Modo local (testing inicial, usuarios fuera del IdP de ANH, cuentas técnicas)
 
 ```
 ┌─────────────┐         ┌──────────────┐                                 ┌──────────────────┐
@@ -2613,7 +3224,7 @@ Este apéndice documenta, paso a paso, el flujo operativo del patrón de §7.1.1
 
 **Identidad del JWT emitido:** los microservicios GOP consumen **el mismo formato de JWT** sea el flujo federado o local. No hay ramificación en el código del servicio consumidor.
 
-#### 19.8.3 Endpoints de `gop.identity`
+#### 20.8.3 Endpoints de `gop.identity`
 
 | Endpoint | Flujo | Condición |
 |---|---|---|
@@ -2622,9 +3233,9 @@ Este apéndice documenta, paso a paso, el flujo operativo del patrón de §7.1.1
 | `POST /auth/refresh` | Ambos | Rotación de refresh token con detección de reuso |
 | `POST /auth/logout` | Ambos | Revoca refresh token; agrega JWT a revocation list si sigue vigente |
 | `GET /users/me` | Ambos | Devuelve perfil completo del usuario autenticado (nombre, email, roles) — datos que NO van en claims |
-| `GET /users/{id}/contracts` | Ambos | Resolución on-demand cuando `contracts_truncated = true` (§7.4.2) |
+| `GET /users/{id}/contracts` | Ambos | Resolución on-demand cuando `contracts_truncated = true` (§8.4.2) |
 
-#### 19.8.4 Configuración operativa (flags)
+#### 20.8.4 Configuración operativa (flags)
 
 La shared library `Anh.Gop.Shared.Auth` expone las siguientes opciones de configuración (`GopIdentityOptions`):
 
@@ -2640,48 +3251,163 @@ La shared library `Anh.Gop.Shared.Auth` expone las siguientes opciones de config
 | `Jwt.RefreshTokenLifetime` | `08:00:00` | 8 h absolute |
 | `TechnicalAccounts` | `[]` | Lista explícita de usernames locales que sobreviven a desactivación de local auth |
 
-**Nota de despliegue:** los valores anteriores se inyectan por variables de entorno / Key Vault (ver §12.7). El `StartupSecretsValidator` falla el arranque si detecta placeholders en `SigningKey` o `ClientSecret`.
+**Nota de despliegue:** los valores anteriores se inyectan por variables de entorno / Key Vault (ver §13.7). El `StartupSecretsValidator` falla el arranque si detecta placeholders en `SigningKey` o `ClientSecret`.
 
 ---
 
-## 20. Glosario
+## 21. Glosario
 
 - **Aggregate Root:** entidad raíz de un agregado DDD. Punto de entrada para modificar el agregado.
-- **Always Encrypted:** feature de SQL Server 2022 que cifra columnas sensibles con claves que nunca viajan al motor de BD, sólo al cliente autorizado. Usado en GOP para datos `[DataClassification(Level ≥ 3)]` (ver §12.8).
-- **Antiforgery / CSRF Token:** mecanismo que previene Cross-Site Request Forgery exigiendo un token adicional (no cookie) en requests de mutación desde navegadores con sesión basada en cookie. APIs JWT-Bearer están exentas (ver §12.4).
-- **Audit.NET:** librería open-source (MIT) para captura automática de auditoría en .NET. En GOP se usa con el paquete `Audit.EntityFramework.Core` para interceptar cambios de `DbContext` y persistirlos en `audit.AuditLog` sin que el código de dominio deba conocer el log (ver §11.6).
+- **Always Encrypted:** feature de SQL Server 2022 que cifra columnas sensibles con claves que nunca viajan al motor de BD, sólo al cliente autorizado. Usado en GOP para datos `[DataClassification(Level ≥ 3)]` (ver §13.8).
+- **Antiforgery / CSRF Token:** mecanismo que previene Cross-Site Request Forgery exigiendo un token adicional (no cookie) en requests de mutación desde navegadores con sesión basada en cookie. APIs JWT-Bearer están exentas (ver §13.4).
+- **Audit.NET:** librería open-source (MIT) para captura automática de auditoría en .NET. En GOP se usa con el paquete `Audit.EntityFramework.Core` para interceptar cambios de `DbContext` y persistirlos en `audit.AuditLog` sin que el código de dominio deba conocer el log (ver §12.6).
 - **Bounded Context:** contexto con su propio lenguaje, modelo y lógica. En GOP coincide con un microservicio y un esquema de BD.
 - **Capability:** permiso fino asignable a un rol.
-- **Clean Architecture:** estilo arquitectónico con capas concéntricas (Domain → Application → Infrastructure → Presentation) donde las dependencias apuntan siempre hacia adentro. Base estructural de todos los microservicios GOP (ver §5).
-- **CQRS:** Command Query Responsibility Segregation. Separación de modelos de escritura (commands) y lectura (queries). En GOP se implementa con dispatchers propios en `Anh.Gop.Shared.Cqrs` (ver §10.1 y §19.7).
-- **Data Classification (Niveles 0–4):** esquema de clasificación de sensibilidad del dato (`Public`, `Internal`, `Confidential`, `Reserved`, `Restricted`). Define auditoría extra y policies de exposición (ver §7.10).
+- **Clean Architecture:** estilo arquitectónico con capas concéntricas (Domain → Application → Infrastructure → Presentation) donde las dependencias apuntan siempre hacia adentro. Base estructural de todos los microservicios GOP (ver §6).
+- **CQRS:** Command Query Responsibility Segregation. Separación de modelos de escritura (commands) y lectura (queries). En GOP se implementa con dispatchers propios en `Anh.Gop.Shared.Cqrs` (ver §11.1 y §20.7).
+- **Data Classification (Niveles 0–4):** esquema de clasificación de sensibilidad del dato (`Public`, `Internal`, `Confidential`, `Reserved`, `Restricted`). Define auditoría extra y policies de exposición (ver §8.10).
 - **DDD:** Domain-Driven Design.
 - **Dispatcher:** componente que resuelve el handler correcto para un command/query y lo invoca. En GOP se implementa en `Anh.Gop.Shared.Cqrs` sin dependencias externas.
 - **Decorador (pipeline behavior):** clase que envuelve un dispatcher o handler para aplicar cross-cutting concerns (validación, logging, autorización) sin modificar el handler.
 - **FSM:** Finite State Machine.
-- **IdP (Identity Provider):** sistema responsable de autenticar usuarios y emitir tokens que prueban su identidad. En GOP, el IdP externo es el designado por ANH (típicamente Active Directory corporativo). Ver §7.1.1.
-- **Host Tenant / Regulator-as-Host:** en el patrón multitenant de GOP, el tenant privilegiado es **ANH** (el regulador), no un operador. ANH actúa como host — administra catálogos, define workflows, fiscaliza — y los operadores son tenants consumidores (ver §6.1).
-- **ETag (Entity Tag):** identificador opaco asociado a la versión de un recurso, emitido en el header `ETag` de la response. El cliente lo reenvía en `If-Match` en un PUT/PATCH posterior para habilitar concurrencia optimista — si la versión en servidor ya cambió, la operación falla con `412 Precondition Failed`. En GOP se deriva de `RowVersion` / `xmin` (ver §9.6, §11.5).
+- **IdP (Identity Provider):** sistema responsable de autenticar usuarios y emitir tokens que prueban su identidad. En GOP, el IdP externo es el designado por ANH (típicamente Active Directory corporativo). Ver §8.1.1.
+- **Host Tenant / Regulator-as-Host:** en el patrón multitenant de GOP, el tenant privilegiado es **ANH** (el regulador), no un operador. ANH actúa como host — administra catálogos, define workflows, fiscaliza — y los operadores son tenants consumidores (ver §7.1).
+- **ETag (Entity Tag):** identificador opaco asociado a la versión de un recurso, emitido en el header `ETag` de la response. El cliente lo reenvía en `If-Match` en un PUT/PATCH posterior para habilitar concurrencia optimista — si la versión en servidor ya cambió, la operación falla con `412 Precondition Failed`. En GOP se deriva de `RowVersion` / `xmin` (ver §10.6, §12.5).
 - **Idempotencia:** propiedad de una operación por la cual aplicarla múltiples veces produce el mismo resultado.
-- **Idempotency-Key:** header HTTP enviado por el cliente en requests POST críticos (crear pozo, radicar forma, firmar, aprobar) que permite al servicio detectar reintentos y retornar la misma respuesta sin re-ejecutar la operación. Se persiste en tabla de claves usadas por N horas (ver §9.7).
-- **OIDC (OpenID Connect):** capa de identidad sobre OAuth 2.0 (RFC 6749) que permite a una aplicación (Relying Party) verificar la identidad de un usuario autenticado por un IdP y obtener información básica de perfil vía `id_token`. Protocolo usado en §7.1.1 para la federación con el IdP de ANH.
-- **OWASP ASVS (Application Security Verification Standard):** estándar OWASP con controles verificables por nivel de assurance (L1/L2/L3). En GOP se usa como referencia normativa para autenticación y gestión de sesión (§7.12.2).
-- **OWASP Top 10:** lista priorizada de las 10 categorías de riesgo de seguridad más críticas en aplicaciones web, mantenida por OWASP. GOP aplica OWASP 2021 (ver §12).
+- **Idempotency-Key:** header HTTP enviado por el cliente en requests POST críticos (crear pozo, radicar forma, firmar, aprobar) que permite al servicio detectar reintentos y retornar la misma respuesta sin re-ejecutar la operación. Se persiste en tabla de claves usadas por N horas (ver §10.7).
+- **OIDC (OpenID Connect):** capa de identidad sobre OAuth 2.0 (RFC 6749) que permite a una aplicación (Relying Party) verificar la identidad de un usuario autenticado por un IdP y obtener información básica de perfil vía `id_token`. Protocolo usado en §8.1.1 para la federación con el IdP de ANH.
+- **OWASP ASVS (Application Security Verification Standard):** estándar OWASP con controles verificables por nivel de assurance (L1/L2/L3). En GOP se usa como referencia normativa para autenticación y gestión de sesión (§8.12.2).
+- **OWASP Top 10:** lista priorizada de las 10 categorías de riesgo de seguridad más críticas en aplicaciones web, mantenida por OWASP. GOP aplica OWASP 2021 (ver §13).
 - **ProblemDetails:** formato estándar RFC 7807 para respuestas de error HTTP.
-- **PKCE (Proof Key for Code Exchange):** extensión de OAuth 2.0 (RFC 7636) que protege el flujo Authorization Code contra interceptación, requerida en clientes públicos como SPAs. Aplicada en el flujo federado (§19.8.1).
-- **Rate Limiting:** control que limita la frecuencia de requests por IP o identidad para prevenir abuso, brute-force y DoS. En GOP se aplica en dos capas: nginx por IP (§17.1) y app por usuario vía policies predefinidas (§12.5).
-- **Relying Party (RP):** en el modelo OIDC, la aplicación que delega autenticación en un IdP externo y consume el `id_token` para verificar la identidad del usuario. En GOP, `gop.identity` actúa como RP frente al IdP de ANH (§7.1.1).
-- **Result Pattern:** patrón donde los métodos devuelven un `Result<T>` (éxito con valor o fallo con error estructurado) en lugar de lanzar excepciones para flujos de error esperados (ver §10.2 y plantillas §19.3/§19.4). Las excepciones quedan reservadas para fallos técnicos inesperados.
-- **SBOM (Software Bill of Materials):** inventario firmable de todas las dependencias de un artefacto, en formato estándar (CycloneDX en GOP). Generado en CI y adjunto al release (ver §12.12).
-- **Security Headers:** conjunto de HTTP response headers que endurecen el comportamiento del navegador contra XSS, clickjacking, MIME sniffing y leaks (`HSTS`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `CSP`). Emitidos por la shared library `Anh.Gop.Shared.Security` (ver §12.2).
-- **SSRF (Server-Side Request Forgery):** vulnerabilidad donde un atacante induce al servidor a hacer requests HTTP a destinos no intencionados (p.ej. metadata cloud `169.254.169.254`, IPs internas). Mitigado por `SsrfProtectionHandler` en todo cliente HTTP saliente (ver §12.10).
-- **Token Exchange (RFC 8693):** patrón OAuth 2.0 que describe el intercambio de un token emitido por un Authorization Server externo por un token emitido por otro Authorization Server con claims de dominio propios. Patrón central del modelo de identidad GOP (§7.1.1, §19.8).
-- **Specification Pattern:** patrón DDD para encapsular reglas de filtrado o invariantes de dominio en objetos componibles. En GOP se usa en repositorios para construir queries complejas sin filtrar en memoria (ver §10.7).
+- **PKCE (Proof Key for Code Exchange):** extensión de OAuth 2.0 (RFC 7636) que protege el flujo Authorization Code contra interceptación, requerida en clientes públicos como SPAs. Aplicada en el flujo federado (§20.8.1).
+- **Rate Limiting:** control que limita la frecuencia de requests por IP o identidad para prevenir abuso, brute-force y DoS. En GOP se aplica en dos capas: nginx por IP (§18.1) y app por usuario vía policies predefinidas (§13.5).
+- **Relying Party (RP):** en el modelo OIDC, la aplicación que delega autenticación en un IdP externo y consume el `id_token` para verificar la identidad del usuario. En GOP, `gop.identity` actúa como RP frente al IdP de ANH (§8.1.1).
+- **Result Pattern:** patrón donde los métodos devuelven un `Result<T>` (éxito con valor o fallo con error estructurado) en lugar de lanzar excepciones para flujos de error esperados (ver §11.2 y plantillas §20.3/§20.4). Las excepciones quedan reservadas para fallos técnicos inesperados.
+- **SBOM (Software Bill of Materials):** inventario firmable de todas las dependencias de un artefacto, en formato estándar (CycloneDX en GOP). Generado en CI y adjunto al release (ver §13.12).
+- **Security Headers:** conjunto de HTTP response headers que endurecen el comportamiento del navegador contra XSS, clickjacking, MIME sniffing y leaks (`HSTS`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `CSP`). Emitidos por la shared library `Anh.Gop.Shared.Security` (ver §13.2).
+- **SSRF (Server-Side Request Forgery):** vulnerabilidad donde un atacante induce al servidor a hacer requests HTTP a destinos no intencionados (p.ej. metadata cloud `169.254.169.254`, IPs internas). Mitigado por `SsrfProtectionHandler` en todo cliente HTTP saliente (ver §13.10).
+- **Token Exchange (RFC 8693):** patrón OAuth 2.0 que describe el intercambio de un token emitido por un Authorization Server externo por un token emitido por otro Authorization Server con claims de dominio propios. Patrón central del modelo de identidad GOP (§8.1.1, §20.8).
+- **Specification Pattern:** patrón DDD para encapsular reglas de filtrado o invariantes de dominio en objetos componibles. En GOP se usa en repositorios para construir queries complejas sin filtrar en memoria (ver §11.7).
 - **Tenant:** en GOP, cada operador es un tenant.
 
 ---
 
-*Fin del CONSTITUTION-ba.md v1.8*
+*Fin del CONSTITUTION-ba.md v1.11*
+
+---
+
+## Control de cambios v1.10 → v1.11
+
+**Cambio Minor — adiciones compatibles hacia atrás (§2.2). No requiere refactor de código existente; sí requiere actualizar referencias de naming en repos y configuración.**
+
+### Adiciones estructurales
+
+- **§4 NUEVO — Spec-Driven Development.** Sección completa que formaliza la metodología SDD para todo el backend: estructura obligatoria `specs/NNN-nombre-feature/` con `spec.md` (QUÉ), `plan.md` (CÓMO), `tasks.md` (CUÁNDO), `contracts/api-contract.yaml` (OpenAPI), `checklists/requirements.md`, `data-model.md` y `research.md`. Define MUSTs sobre criterios Given/When/Then, OpenAPI completo antes de codear, y PROHIBIDO comenzar implementación sin spec aprobada. Alinea backend con la metodología SDD ya vigente en el frontend (`CONSTITUTION-fe.md` §15).
+- **§7.5 NUEVO — Tipo de clave primaria.** `int` autoincremental obligatorio en todas las entidades de dominio. PROHIBIDO `Guid` salvo ADR. Excepción única: tablas PPDM 3.9 en schema `catalog` con `varchar(40)` (ADR-0001). Las tablas de extensión GOP que referencian PPDM mantienen `int` propio.
+- **§15.6 NUEVO — Architecture tests con NetArchTest.Rules.** Proyecto `<Servicio>.Architecture.Tests.csproj` obligatorio que verifica reglas estructurales (Clean Architecture, dependencias entre capas, naming) en CI.
+- **§19.5 NUEVO — Línea roja: testing e higiene de CI.**
+- **§20.8 NUEVO — Apéndice: flujo de Token Exchange (IdP externo + JWT de aplicación).** Diagrama de secuencia detallado del flujo `gop-idp` → `gop-identity` → microservicios consumidores.
+
+### Cambios en el stack tecnológico (§5)
+
+Cinco filas nuevas obligatorias:
+
+| Tecnología | Rol | Justificación |
+|---|---|---|
+| **Duende IdentityServer 7+** | Servidor OIDC/OAuth2 en `gop-idp` | Permite simular el IdP externo en dev/test y reemplazarlo por el AD real de ANH en producción mediante configuración (Discovery endpoint), sin tocar código. Licencia Community (revenue < $1M). |
+| **Asp.Versioning.Http + Asp.Versioning.Mvc.ApiExplorer 8+** | Versionado de API | Reemplazo oficial de `Microsoft.AspNetCore.Mvc.Versioning` (deprecado desde .NET 7). |
+| **NetArchTest.Rules 2+** | Tests de arquitectura | Verifica reglas estructurales del código en CI (ver §15.6). |
+| **DocFX 2+** | Documentación de desarrollo | Sitio estático generado en CI desde XML docs + Markdown (ver §10.8). |
+| **Seq 2024+** | Log aggregation | Receptor de Serilog interno, no expuesto vía nginx (ver §18.4). |
+
+### Separación `gop-idp` ↔ `gop-identity` (§6.2 + §8.1.1 + §18.4)
+
+- Nuevo microservicio **`gop-idp`** (Duende IdentityServer): servidor OIDC/OAuth2 que simula el IdP externo en dev/test y se reemplaza por el AD real de ANH en producción cambiando solo la URL del Discovery endpoint en configuración. **No gestiona usuarios de dominio GOP** — solo emite `id_token` OIDC estándar.
+- **`gop-identity`** ahora actúa exclusivamente como **Relying Party** del IdP (sea `gop-idp` en dev o el AD real en prod), valida el `id_token` y aplica Token Exchange (RFC 8693) para emitir el JWT interno GOP.
+- **Regla de no-hardcoding de URLs:** `gop-identity` y todo consumidor de `gop-idp` **MUST** resolver endpoints (token endpoint, signing keys) usando el Discovery endpoint `/.well-known/openid-configuration`. **PROHIBIDO** hardcodear rutas. Esto garantiza que cambiar de IdP sea cambio de configuración, no de código.
+- nginx enruta `/idp/*` → `gop-idp:5001` y `/identity/*` → `gop-identity:5011` (ver §18.4).
+
+### Convención de naming de microservicios (§6.2 y todo el documento)
+
+- Rename **`gop.X` → `gop-X`** (kebab-case con guiones) en los nueve servicios:
+  - `gop.identity` → `gop-identity`
+  - `gop.core` → `gop-core`
+  - `gop.operations` → `gop-operations`
+  - `gop.production` → `gop-production`
+  - `gop.procedures` → `gop-procedures`
+  - `gop.integration` → `gop-integration`
+  - `gop.audit` → `gop-audit`
+  - **NUEVO** `gop-idp`
+- Esta convención alinea los nombres de servicio con la práctica estándar para nombres de paquetes, contenedores Docker e imágenes de registry. Los nombres de namespace .NET (`Anh.Gop.X`) **no cambian** — la convención de puntos sigue siendo válida en código.
+- **Acción de migración:** los repos existentes deben renombrarse en una iteración coordinada; las URLs internas (`http://gop.identity` → `http://gop-identity`), nombres de servicios en Docker Compose y rutas de nginx también.
+
+### Política de licenciamiento de Duende IdentityServer
+
+Duende ofrece licencia Community gratuita para organizaciones con revenue < $1M. ANH es entidad estatal — el equipo legal **MUST** confirmar antes de producción si aplica la Community o se requiere licencia comercial. Mientras tanto, en dev/test la Community cubre todos los escenarios. Si el resultado legal exige licencia paga, la decisión se documenta con ADR y se evalúan alternativas (OpenIddict como reemplazo open-source).
+
+### Cross-references actualizadas
+
+Toda referencia interna `§N.M` se renumeró por la inserción de §4 (SDD) y §7.5 (PK type). Las secciones posteriores se desplazaron +1 posición (ej. antiguo §4 Stack → §5; antiguo §17 nginx → §18). El documento es internamente consistente.
+
+---
+
+## Control de cambios v1.9 → v1.10
+
+**Ajuste de agilidad — calibración de imperativos sin sacrificar el núcleo duro:**
+
+El diagnóstico interno identificó que la ratio MUST/PROHIBIDO vs SHOULD/MAY (≈6:1) mezclaba invariantes arquitectónicos con decisiones operativas, generando fricción innecesaria. Esta versión recalibra sin modificar ningún invariante de seguridad, multitenant, Clean Architecture o contratos de API.
+
+- **§0 — nueva §0.1 "Política unificada de ADR"** — ADR obligatorio solo para: modificar este documento, transgredir §19, cambiar stack (§5) o dependencia fuera del aprobado, relajar §13 (seguridad), introducir patrón transversal nuevo. El resto se justifica en el PR. Redefinido SHOULD: basta justificación en PR (no ADR) salvo que el § específico diga lo contrario.
+- **§2.2** — ADR solo para cambios mayores del documento. Cambios menores (ejemplos, aclaraciones) sin ADR.
+- **§2.3** — Excepciones a MUST fuera de §13/§19 y a cualquier SHOULD se justifican en el PR, sin ADR. ADR solo se mantiene para excepciones a §13/§19.
+- **§5.1 Licencias** — eliminado el MUST del comentario manual de licencia en cada PR (CI ya lo valida). Degradado a MAY como cortesía para dependencias poco conocidas.
+- **§9.2** — cambiar clasificación de entidades ya productivas requiere ADR (impacto real en contratos); la clasificación inicial solo se documenta en el modelo.
+- **§9.3.0 — nueva sección "Principio rector — crudo con IDs; excepción calificada en listados"** — consagra explícitamente como principio rector que el backend emite DTOs crudos con IDs y el frontend hidrata (alineado con `CONSTITUTION-fe.md` §22). La inclusión de labels precomputados queda formalmente limitada a los `SummaryDto` de listados, como excepción justificada para evitar hidratación masiva en tablas. El Detail **nunca** lleva labels.
+- **§11.8.10.1 — nueva sección "Cómo mantener una regla hardcodeada de forma sostenible"** — 7 prácticas aplicables cuando la complejidad obliga a dejar la regla en código (back y/o front) en lugar de externalizarla al formato declarativo: ubicación dedicada con naming propio, interfaz tipada (patrón Strategy-ready), test por rama, encabezado de procedencia normativa, pareja BE↔FE declarada con el backend como fuente de verdad, registro en catálogo interno (`BUSINESS-RULES.md`), revisión periódica para evaluar externalización futura. Convierte la excepción de §11.8.10 de un "documentar y seguir" genérico en una pauta concreta de mantenibilidad.
+- **§9.3.1 SummaryDto** — composición de campos cambia de MUST a SHOULD (nombre y tipo siguen siendo MUST). Desviaciones puntuales se justifican en el PR.
+- **§9.5 Endpoints especializados** — ADR solo cuando el DTO especializado introduce patrón recurrente nuevo; casos puntuales se documentan en el PR.
+- **§10.1 Versionado** — v1 vivo 6 meses tras v2 degradado de MUST a SHOULD. Se puede acortar si los consumidores han migrado (documentado en el PR de retiro).
+- **§10.3 Paginación** — MUST: existe tope superior de `pageSize`. Valores concretos (50/100/500) degradados a SHOULD configurables por entorno, sin ADR.
+- **§10.8 Documentación** — MUST de XML docs acotado a **endpoints públicos de negocio**. DTOs con nombres autodocumentados → SHOULD. Endpoints de infraestructura (health, metrics, swagger) exentos.
+- **§11.5.3 Evolución a V2** — versionado independiente de integration events se activa cuando se introduzca event bus; migración gradual degradada a SHOULD.
+- **§12.4 Transacciones** — transacciones cortas degradado a SHOULD. Umbral de 5s pasa a ser referencia de monitoring/alerta, no bloqueante en PR.
+- **§13.5 Rate limiting** — MUST: todo endpoint con policy asignada. Valores concretos de las 4 policies degradados a SHOULD configurables por entorno; desactivar la policy sigue requiriendo ADR.
+- **§13.6 Password policy** — separada en principios MUST (existe política, historial, lockout, rotation, MFA) y valores SHOULD (12 chars, historial 5, 90 días, etc.) alineables con política operativa ANH sin tocar el documento.
+- **§15.1 Cobertura** — 80% degradado a SHOULD; MUST es que existan tests para los comportamientos críticos de §15.2–15.5.
+- **§15.3 Integration tests** — "nunca mockear EF" relajado: SHOULD usar SQL real; MAY mockear `DbContext` en unit tests puntuales cuyo comportamiento es independiente del ORM.
+- **§19 Líneas rojas** — reformulada como invariantes arquitectónicos y de seguridad:
+  - §19.2 Datos: `SELECT *` removido de líneas rojas (pasa a anti-patrón SHOULD en §12.1).
+  - §19.3 Seguridad: `[AllowAnonymous]` admite excepción explícita para endpoints de infraestructura listados en shared lib.
+  - §19.3 Seguridad: `Newtonsoft.Json` reformulado — se prohíbe introducirlo como serializer primario; dependencias transitivas y SDKs de terceros no activan el bloqueo.
+  - §19.4 API: prohibición de endpoints sin OpenAPI acotada a endpoints públicos de negocio.
+  - §19.5 Testing: sección reemplazada por referencia a políticas de CI/analyzers (las reglas de "no push con tests rotos" y "no `#pragma` sin comentario" viven en pipeline/analyzers, no como líneas rojas arquitectónicas).
+
+**Impacto global:**
+
+- MUST/PROHIBIDO/NUNCA pasan de ~33 standalone + 50 NUNCA a ~25 MUST + ~40 NUNCA. SHOULD sube de ~20 a ~35. Ratio baja de ≈6:1 a ≈2:1.
+- Núcleo no negociable intacto: filtro de tenant, ProblemDetails/no-envelope, Result Pattern, Clean Architecture dependency rule, Audit.NET local, hardening OWASP (§13), líneas rojas de datos y seguridad.
+- Decisiones tácticas (umbrales, plazos, coberturas, composición de DTOs) pasan a ser guías con valores iniciales configurables, liberando al equipo de tramitar ADRs triviales.
+
+---
+
+## Control de cambios v1.8 → v1.9
+
+**Desacoplamiento de reglas de formularios y lógica de negocio:**
+
+- **§11.8 — nueva sección "Desacoplamiento de reglas de formularios y lógica de negocio"** con 11 subsecciones:
+  - §11.8.1 Propósito — enfoque base pragmático, no camisa de fuerza; casos complejos MAY quedar hardcodeados con decisión documentada.
+  - §11.8.2 Dos principios rectores:
+    - **P1** Reglas de formulario servidas desde el back, evaluadas en memoria por el front (single request al cargar, sin chatter).
+    - **P2** Reglas de negocio desacopladas del código transaccional (handlers coordinan, reglas en componentes dedicados).
+  - §11.8.3 Ubicación: `Application/Rules/{forms,business,schemas}` versionado en Git, no en BD (salvo admin no-técnico vía UI).
+  - §11.8.4 Formato preferido: JSON (SHOULD); YAML/C# planas (MAY).
+  - §11.8.5 Endpoint estándar `GET /api/v1/forms/{form-key}/rules`. El backend aplica las mismas reglas al validar payload — no se confía en el cliente.
+  - §11.8.6 Qué va / qué no va en archivos de reglas. Heurística: "datos + referencias a códigos conocidos" → archivo; "expresión a evaluar" → código.
+  - §11.8.7 Referencias a código por **código simbólico** (`EXPLORATORY_FIELD_PLACEHOLDER`) con implementación C# tipada (`IPlaceholderResolver`). PROHIBIDO expresiones dinámicas tipo `"fieldA > 5"`.
+  - §11.8.8 Validación al arranque contra JSON schema; servicio no arranca si hay errores.
+  - §11.8.9 Alineación Clean/hexagonal: archivos como recursos, motor en Infrastructure (`Anh.Gop.Shared.RulesEngine`), dominio consume vía puerto `IRulesProvider`.
+  - §11.8.10 Cuándo NO aplicar (invariantes de dominio, norma legal estable, caso único, complejidad que requeriría mini-lenguaje).
+  - §11.8.11 Líneas rojas: NUNCA motor Turing-completo, NUNCA cargar sin validar schema, NUNCA duplicar lógica back/front, NUNCA leer archivos desde Domain/handlers.
 
 ---
 
@@ -2689,22 +3415,22 @@ La shared library `Anh.Gop.Shared.Auth` expone las siguientes opciones de config
 
 **Uniformidad de contratos de API — respuestas de éxito y serialización:**
 
-- **§9.6 — nueva sección "Respuestas de éxito — POST / PUT / PATCH / DELETE"**. Define por convención vinculante:
+- **§10.6 — nueva sección "Respuestas de éxito — POST / PUT / PATCH / DELETE"**. Define por convención vinculante:
   - Principio **sin envelope universal** (PROHIBIDO `{status, message, data}` y similares).
   - Tabla de convención status + body + headers por verbo y escenario (create, sync-action, async-action, bulk, replace, partial, hard-delete, soft-delete).
   - 7 reglas MUST vinculantes (201+Location al crear, 204 sin body al hard-delete, 200+DTO al soft-delete, ETag en PUT/PATCH, paginación en `X-Pagination`, ProblemDetails RFC 7807 para todo error).
   - Helpers del Result Pattern (`ToCreatedResult`, `ToOkResult`, `ToAcceptedResult`, `ToNoContentResult`) en `Anh.Gop.Shared.Api` — el desarrollador no elige status code manualmente.
-- **§9.7 Idempotencia** y **§9.8 Documentación** — renumeradas (antes §9.6 y §9.7).
-- **§9.9 — nueva sección "Convenciones adicionales de serialización"** con 6 subsecciones:
-  - §9.9.1 Fechas y zona horaria (ISO 8601 + UTC en BD, conversión en frontend).
-  - §9.9.2 Serialización de enums (string, no entero).
-  - §9.9.3 Nomenclatura JSON (camelCase).
-  - §9.9.4 Null vs. omitido (response omite `null`; PATCH distingue omitido = "no cambiar" de `null` = "limpiar").
-  - §9.9.5 Uploads/downloads (`multipart/form-data`, 50 MB default, validación MIME real, blob storage con `BlobReference`, streaming en descargas grandes, presigned URLs preferidas).
-  - §9.9.6 Exportes tabulares (CSV con BOM UTF-8, XLSX `ClosedXML`/`EPPlus`, PDF `QuestPDF`, async + `202` para > 10 000 filas).
-- **§18.4 API** — añadidas 3 líneas rojas: prohibición de envelopes propietarios, prohibición de fechas/enums/naming no canónicos en contratos públicos, prohibición de base64 de binarios en JSON salvo excepción documentada.
-- **§19.6 Plantilla de Controller** — actualizada: `CreateWell` ahora usa `ToCreatedResult` y devuelve `WellDetailDto` (no `{id}`); añadidos ejemplos de `ReplaceWell` (PUT 200+ETag) y `DeleteWell` (DELETE 204).
-- **§20 Glosario** — añadidos: `ETag (Entity Tag)`, `Idempotency-Key`.
+- **§10.7 Idempotencia** y **§10.8 Documentación** — renumeradas (antes §10.6 y §10.7).
+- **§10.9 — nueva sección "Convenciones adicionales de serialización"** con 6 subsecciones:
+  - §10.9.1 Fechas y zona horaria (ISO 8601 + UTC en BD, conversión en frontend).
+  - §10.9.2 Serialización de enums (string, no entero).
+  - §10.9.3 Nomenclatura JSON (camelCase).
+  - §10.9.4 Null vs. omitido (response omite `null`; PATCH distingue omitido = "no cambiar" de `null` = "limpiar").
+  - §10.9.5 Uploads/downloads (`multipart/form-data`, 50 MB default, validación MIME real, blob storage con `BlobReference`, streaming en descargas grandes, presigned URLs preferidas).
+  - §10.9.6 Exportes tabulares (CSV con BOM UTF-8, XLSX `ClosedXML`/`EPPlus`, PDF `QuestPDF`, async + `202` para > 10 000 filas).
+- **§19.4 API** — añadidas 3 líneas rojas: prohibición de envelopes propietarios, prohibición de fechas/enums/naming no canónicos en contratos públicos, prohibición de base64 de binarios en JSON salvo excepción documentada.
+- **§20.6 Plantilla de Controller** — actualizada: `CreateWell` ahora usa `ToCreatedResult` y devuelve `WellDetailDto` (no `{id}`); añadidos ejemplos de `ReplaceWell` (PUT 200+ETag) y `DeleteWell` (DELETE 204).
+- **§21 Glosario** — añadidos: `ETag (Entity Tag)`, `Idempotency-Key`.
 
 ---
 
@@ -2712,32 +3438,32 @@ La shared library `Anh.Gop.Shared.Auth` expone las siguientes opciones de config
 
 **Modelo de identidad formalizado — Token Exchange (RFC 8693) + usuarios locales (ASP.NET Core Identity):**
 
-- **§7.1** — precisión del wording: SSO contra "IdP externo designado por ANH" (no exclusivamente AD corporativo); MFA obligatoria para usuarios gestionados en el IdP externo.
-- **§7.1.1** — nueva sección **"Modelo de identidad — IdP federado + JWT de aplicación (Token Exchange)"**. Documenta explícitamente:
+- **§8.1** — precisión del wording: SSO contra "IdP externo designado por ANH" (no exclusivamente AD corporativo); MFA obligatoria para usuarios gestionados en el IdP externo.
+- **§8.1.1** — nueva sección **"Modelo de identidad — IdP federado + JWT de aplicación (Token Exchange)"**. Documenta explícitamente:
   - `gop.identity` actúa como Relying Party (RP) OIDC frente al IdP externo y como Authorization Server propio que emite JWT de aplicación con claims de dominio.
   - Separación autenticación (IdP externo) vs. autorización de dominio (`gop.identity`).
   - Referencia a RFC 7519, RFC 8693, OWASP ASVS v4.
   - Prohibición explícita de propagar `id_token` / `access_token` del IdP externo a microservicios GOP.
-- **§7.1.1.1** — nueva subsección **"Usuarios locales (modo transitorio y fallback operativo)"**:
+- **§8.1.1.1** — nueva subsección **"Usuarios locales (modo transitorio y fallback operativo)"**:
   - Habilitados por ASP.NET Core Identity para: testing funcional inicial (pre-federación), usuarios fuera del IdP de ANH (operadores/contratistas sin cuenta corporativa), cuentas técnicas y bootstrap admin.
   - Columna `AuthenticationSource` (`External` | `Local`) en `User` para trazabilidad.
   - JWT de aplicación **idéntico** en forma y claims sea el origen federado o local.
   - Flag `AllowLocalAuthentication` en configuración; evolución a desactivación cuando ANH confirme IdP definitivo y cobertura total.
   - `ANH_Admin` local prohibido salvo bootstrap / cuentas técnicas documentadas por ADR.
-- **§7.2.1** — nueva **"Claims prohibidos en el JWT"**: PII innecesaria, datos sensibles, tokens de terceros, secretos, mutables de alta frecuencia, estructuras no acotadas. El nombre visible se obtiene por `/users/me`, no por claim.
-- **§7.12** — nueva sección **"Cumplimiento normativo del modelo de identidad"** con 7 subsecciones y mapeo explícito a:
+- **§8.2.1** — nueva **"Claims prohibidos en el JWT"**: PII innecesaria, datos sensibles, tokens de terceros, secretos, mutables de alta frecuencia, estructuras no acotadas. El nombre visible se obtiene por `/users/me`, no por claim.
+- **§8.12** — nueva sección **"Cumplimiento normativo del modelo de identidad"** con 7 subsecciones y mapeo explícito a:
   - OWASP ASVS v4 (capítulos 2 y 3).
   - OWASP JWT Cheat Sheet.
   - OWASP Top 10 (2021) por categoría.
   - ISO/IEC 27001/27002:2022 — controles A.5.15, A.5.16, A.5.17, A.5.18, A.8.2, A.8.3, A.8.5, A.8.15, A.8.24, A.8.28.
   - RFCs aplicables: 7519, 7515, 6749, 7636, 8693, 6750 + OIDC Core 1.0.
   - Controles residuales fuera del alcance del backend (confirmación de IdP, matriz de clasificación, plan de respuesta a incidentes).
-- **§19.8** — nuevo apéndice **"Flujo de Token Exchange — IdP externo + JWT de aplicación"** con:
+- **§20.8** — nuevo apéndice **"Flujo de Token Exchange — IdP externo + JWT de aplicación"** con:
   - Diagrama de secuencia en modo federado (Authorization Code + PKCE).
   - Diagrama de secuencia en modo local (ASP.NET Core Identity).
   - Tabla de endpoints de `gop.identity`.
   - Tabla de flags de configuración operativa (`GopIdentityOptions`).
-- **§20 Glosario** — añadidos: `IdP`, `OIDC`, `OWASP ASVS`, `PKCE`, `Relying Party (RP)`, `Token Exchange (RFC 8693)`.
+- **§21 Glosario** — añadidos: `IdP`, `OIDC`, `OWASP ASVS`, `PKCE`, `Relying Party (RP)`, `Token Exchange (RFC 8693)`.
 
 ---
 
@@ -2745,48 +3471,48 @@ La shared library `Anh.Gop.Shared.Auth` expone las siguientes opciones de config
 
 **Cumplimiento OWASP Top 10 (2021) — hardening nativo y automático:**
 
-- **§12 renombrada** de "Validación y sanitización de entrada" a **"Validación, sanitización y hardening de seguridad"**. Contenido previo promovido a §12.1.
-- **§12.0 — Principio rector** añadido: "seguro por defecto, invisible al desarrollador". Todos los controles OWASP automatizables residen en la nueva shared library `Anh.Gop.Shared.Security` y se activan con una sola línea en `Program.cs`.
-- **§12.2 — Security Headers** (A05): HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, CSP (sólo HTML). Aplicados por middleware global.
-- **§12.3 — HTTPS y cookies seguras** (A02, A05): `UseHttpsRedirection` + `UseHsts`, cookies con `HttpOnly`/`Secure`/`SameSite=Strict`.
-- **§12.4 — Antiforgery / CSRF** (A01, A03): filtro global para mutaciones con cookie; APIs JWT exentas.
-- **§12.5 — Rate limiting** (A04, A07): policies predefinidas (`auth-strict`, `api-standard`, `export-heavy`, `read-standard`) vía `Microsoft.AspNetCore.RateLimiting`.
-- **§12.6 — Password, lockout y MFA** (A07): longitud 12, historial 5, expiración 90 días, lockout dual (usuario + IP), MFA obligatorio para roles sensibles.
-- **§12.7 — Secretos** (A02, A05): variables de entorno / Key Vault / DPAPI; `StartupSecretsValidator` falla el arranque si detecta placeholders.
-- **§12.8 — Criptografía** (A02): PBKDF2 default, Always Encrypted para nivel ≥3, RS256 para JWT, prohibición de algoritmos débiles enforced por analyzers.
-- **§12.9 — Deserialización segura** (A08): `System.Text.Json` único (prohibido `Newtonsoft.Json` sin ADR), `UnmappedMemberHandling=Disallow`, `MaxDepth=32`, polimorfismo sólo con `[JsonDerivedType]`, XXE blindado, `BinaryFormatter` prohibido.
-- **§12.10 — SSRF** (A10): `SsrfProtectionHandler` en toda `HttpClient` — allow-list declarativa, bloqueo de IPs privadas/loopback/metadata, validación de redirects. Prohibido `new HttpClient()` directo.
-- **§12.11 — Inyección LDAP** (A03): `LdapFilterEncoder` obligatorio; LDAPS/StartTLS obligatorio.
-- **§12.12 — Supply chain** (A06, A08): CI falla con CVE High/Critical, SBOM CycloneDX, Dependabot/Renovate, signature validation, Trivy para Docker.
-- **§12.13 — Analyzers** de seguridad warning-as-error en `Directory.Build.props` raíz (CA3xxx, CA5xxx, SecurityCodeScan, Roslynator).
-- **§12.14 — Error handling** (A05, A09): ProblemDetails sanitizado, stack y detalle técnico sólo en `Development`.
-- **§12.15 — Mapa** explícito OWASP Top 10 → sección del documento.
+- **§13 renombrada** de "Validación y sanitización de entrada" a **"Validación, sanitización y hardening de seguridad"**. Contenido previo promovido a §13.1.
+- **§13.0 — Principio rector** añadido: "seguro por defecto, invisible al desarrollador". Todos los controles OWASP automatizables residen en la nueva shared library `Anh.Gop.Shared.Security` y se activan con una sola línea en `Program.cs`.
+- **§13.2 — Security Headers** (A05): HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, CSP (sólo HTML). Aplicados por middleware global.
+- **§13.3 — HTTPS y cookies seguras** (A02, A05): `UseHttpsRedirection` + `UseHsts`, cookies con `HttpOnly`/`Secure`/`SameSite=Strict`.
+- **§13.4 — Antiforgery / CSRF** (A01, A03): filtro global para mutaciones con cookie; APIs JWT exentas.
+- **§13.5 — Rate limiting** (A04, A07): policies predefinidas (`auth-strict`, `api-standard`, `export-heavy`, `read-standard`) vía `Microsoft.AspNetCore.RateLimiting`.
+- **§13.6 — Password, lockout y MFA** (A07): longitud 12, historial 5, expiración 90 días, lockout dual (usuario + IP), MFA obligatorio para roles sensibles.
+- **§13.7 — Secretos** (A02, A05): variables de entorno / Key Vault / DPAPI; `StartupSecretsValidator` falla el arranque si detecta placeholders.
+- **§13.8 — Criptografía** (A02): PBKDF2 default, Always Encrypted para nivel ≥3, RS256 para JWT, prohibición de algoritmos débiles enforced por analyzers.
+- **§13.9 — Deserialización segura** (A08): `System.Text.Json` único (prohibido `Newtonsoft.Json` sin ADR), `UnmappedMemberHandling=Disallow`, `MaxDepth=32`, polimorfismo sólo con `[JsonDerivedType]`, XXE blindado, `BinaryFormatter` prohibido.
+- **§13.10 — SSRF** (A10): `SsrfProtectionHandler` en toda `HttpClient` — allow-list declarativa, bloqueo de IPs privadas/loopback/metadata, validación de redirects. Prohibido `new HttpClient()` directo.
+- **§13.11 — Inyección LDAP** (A03): `LdapFilterEncoder` obligatorio; LDAPS/StartTLS obligatorio.
+- **§13.12 — Supply chain** (A06, A08): CI falla con CVE High/Critical, SBOM CycloneDX, Dependabot/Renovate, signature validation, Trivy para Docker.
+- **§13.13 — Analyzers** de seguridad warning-as-error en `Directory.Build.props` raíz (CA3xxx, CA5xxx, SecurityCodeScan, Roslynator).
+- **§13.14 — Error handling** (A05, A09): ProblemDetails sanitizado, stack y detalle técnico sólo en `Development`.
+- **§13.15 — Mapa** explícito OWASP Top 10 → sección del documento.
 
 **Cambios colaterales:**
 
-- **§4 Stack** — nuevas filas: hardening de seguridad, rate limiting, analyzers de seguridad, supply chain scan.
-- **§5.4 Shared Libraries** — nueva fila `Anh.Gop.Shared.Security`.
-- **§17.1 nginx** — aclarado que los security headers los emite la app (no nginx); HSTS puede duplicarse como defensa redundante; rate limit de IP en nginx es complementario al rate limit por identidad en la app.
-- **§18.3 Seguridad** — 7 líneas rojas nuevas: `new HttpClient()` directo, `Newtonsoft.Json` sin ADR, algoritmos débiles, secretos en config/logs, filtros LDAP interpolados, Developer Exception Page fuera de Development.
-- **§20 Glosario** — añadidos: `Always Encrypted`, `Antiforgery / CSRF Token`, `OWASP Top 10`, `Rate Limiting`, `SBOM`, `Security Headers`, `SSRF`.
+- **§5 Stack** — nuevas filas: hardening de seguridad, rate limiting, analyzers de seguridad, supply chain scan.
+- **§6.4 Shared Libraries** — nueva fila `Anh.Gop.Shared.Security`.
+- **§18.1 nginx** — aclarado que los security headers los emite la app (no nginx); HSTS puede duplicarse como defensa redundante; rate limit de IP en nginx es complementario al rate limit por identidad en la app.
+- **§19.3 Seguridad** — 7 líneas rojas nuevas: `new HttpClient()` directo, `Newtonsoft.Json` sin ADR, algoritmos débiles, secretos en config/logs, filtros LDAP interpolados, Developer Exception Page fuera de Development.
+- **§21 Glosario** — añadidos: `Always Encrypted`, `Antiforgery / CSRF Token`, `OWASP Top 10`, `Rate Limiting`, `SBOM`, `Security Headers`, `SSRF`.
 
 ---
 
 ## Control de cambios v1.4 → v1.5
 
 **Correcciones de wording y consistencia:**
-- §4 — "Obligatorio por Estándar" → "Definido por Estándar de Codificación" (Runtime .NET, tSQLt, Analyzers).
-- §7.3 — ".NET Identity" → "ASP.NET Core Identity" (alineación con §4 y §5.2).
-- §17.2 — reescrita como prosa descriptiva ("Funciones fuera del alcance de nginx"); eliminado el encabezado "NO:" que se leía como prohibición.
+- §5 — "Obligatorio por Estándar" → "Definido por Estándar de Codificación" (Runtime .NET, tSQLt, Analyzers).
+- §8.3 — ".NET Identity" → "ASP.NET Core Identity" (alineación con §5 y §6.2).
+- §18.2 — reescrita como prosa descriptiva ("Funciones fuera del alcance de nginx"); eliminado el encabezado "NO:" que se leía como prohibición.
 
 **Ambigüedades resueltas:**
-- §7.10 — `audit.DataAccessLog` / `audit.ExportLog` sustituidos por eventos especializados en `audit.AuditLog` (`EventType='DataAccess'` / `'Export'` + payload en `AdditionalContextJson`). Añadida nota de modelo.
-- §11.6.6 — añadida topología de BD V1 (instancia física compartida, aislamiento por permisos de esquema + `INSERT` acotado a `audit.AuditLog`). V2+ como ADR pendiente.
-- §10.5.2 — la fila `gop.audit | (consumidor)` se movió fuera de la tabla como nota de excepción explícita.
-- §19.5.1 — añadida nota sobre reevaluación Tipo A → B para `WellStateTransition` y entidades A con >50 ítems.
+- §8.10 — `audit.DataAccessLog` / `audit.ExportLog` sustituidos por eventos especializados en `audit.AuditLog` (`EventType='DataAccess'` / `'Export'` + payload en `AdditionalContextJson`). Añadida nota de modelo.
+- §12.6.6 — añadida topología de BD V1 (instancia física compartida, aislamiento por permisos de esquema + `INSERT` acotado a `audit.AuditLog`). V2+ como ADR pendiente.
+- §11.5.2 — la fila `gop.audit | (consumidor)` se movió fuera de la tabla como nota de excepción explícita.
+- §20.5.1 — añadida nota sobre reevaluación Tipo A → B para `WellStateTransition` y entidades A con >50 ítems.
 
-**Líneas rojas (§18) ampliadas:**
-- §18.1 — "NUNCA un servicio llama a `gop.audit` para escribir auditoría".
-- §18.3 — "NUNCA inserción manual a `audit.AuditLog` desde código; siempre vía Audit.NET".
+**Líneas rojas (§19) ampliadas:**
+- §19.1 — "NUNCA un servicio llama a `gop.audit` para escribir auditoría".
+- §19.3 — "NUNCA inserción manual a `audit.AuditLog` desde código; siempre vía Audit.NET".
 
-**Glosario (§20):** añadidos `Audit.NET`, `Clean Architecture`, `Data Classification`, `Host Tenant / Regulator-as-Host` (alineado con §6.1), `Result Pattern`, `Specification Pattern`.
+**Glosario (§21):** añadidos `Audit.NET`, `Clean Architecture`, `Data Classification`, `Host Tenant / Regulator-as-Host` (alineado con §7.1), `Result Pattern`, `Specification Pattern`.
