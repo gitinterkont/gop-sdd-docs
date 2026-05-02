@@ -2,20 +2,25 @@
 
 ## Diseño Orientado a Dominios (DDD) — Nivel Conceptual Consolidado
 
-**Versión:** 0.5
+**Versión:** 0.6
 **Fecha:** Abril 2026
 **Motor:** SQL Server 2022 / SQL Azure
 **Alcance:** Topología de esquemas, bounded contexts, entidades principales, patrones de modelado de coordenadas, ciclo de vida de pozos, y gobernanza evolutiva del modelo. No incluye aún atributos exhaustivos, constraints e índices a detalle — se derivan en fase posterior.
 
+**Cambios respecto a v0.5:**
+- **Alineación con `CONSTITUTION-ba.md` v1.11**: rename de microservicios `gop.X` → `gop-X` (kebab-case) en toda referencia textual; introducción de `gop-idp` (Duende IdentityServer) como servidor OIDC separado de `gop-identity` (Relying Party + Token Exchange).
+- Cross-references a CONSTITUTION reenumeradas por inserción de §4 (Spec-Driven Development) y §7.5 (PK type) en CONSTITUTION v1.11. Todas las referencias `§N.M de CONSTITUTION` se desplazaron +1 sección donde correspondía. Ningún cambio semántico — solo numeración.
+- No hay cambios al esquema de datos en esta versión.
+
 **Cambios respecto a v0.4:**
 - **Alineación con `CONSTITUTION-ba.md` v1.5–v1.7** (OWASP hardening, Token Exchange federado + usuarios locales, permisos de BD).
 - Nueva **§9.0 Integración con ASP.NET Core Identity**: declara que `User` extiende `IdentityUser<long>` y `Role` extiende `IdentityRole<int>`; uso nativo de `AspNetUserLogins` para federación OIDC (reemplaza columnas custom de IdP externo).
-- **§9.1 `User`** — renombrado `AuthType` → `AuthenticationSource` (`External` | `Local`); eliminado `IsSuperuser` (contradecía §7.4 de CONSTITUTION).
+- **§9.1 `User`** — renombrado `AuthType` → `AuthenticationSource` (`External` | `Local`); eliminado `IsSuperuser` (contradecía §8.4 de CONSTITUTION).
 - Nuevas tablas **§9.6 `RefreshToken`** (con `FamilyId` + rotation chain + detección de reuso) y **§9.7 `RevokedAccessToken`** (revocation list por `jti`).
 - Eliminada **§9.6 anterior `UserSession`** — redundante con `RefreshToken`.
 - **§10.1 `AuditLog`** — documentado el catálogo oficial de `EventType` (autenticación, autorización, dominio, datos sensibles, administración).
 - Nota sobre **Always Encrypted** para columnas con `[DataClassification(Level ≥ 3)]` (§9, §10).
-- Nueva **§14 Permisos de base de datos** — aislamiento lógico por esquema en instancia compartida V1 (alineado con CONSTITUTION §11.6.6).
+- Nueva **§14 Permisos de base de datos** — aislamiento lógico por esquema en instancia compartida V1 (alineado con CONSTITUTION §12.6.6).
 
 **Cambios previos (v0.3 → v0.4):**
 - Motor fijado: **SQL Server 2022 / SQL Azure** (por solicitud del cliente — reemplaza 2026 que era erróneo).
@@ -414,13 +419,13 @@ Validaciones contra Mapa de Tierras persistidas como hechos. `ProcedureId`, `Wel
 
 ## 9. Esquema `identity` — Identidad y Seguridad
 
-Cumple mandato OTI: SSO + IdP externo designado por ANH + MFA obligatorio. El modelo soporta **federación OIDC** y **usuarios locales** en paralelo, según el patrón Token Exchange documentado en `CONSTITUTION-ba.md` §7.1.1 y §7.1.1.1.
+Cumple mandato OTI: SSO + IdP externo designado por ANH + MFA obligatorio. El modelo soporta **federación OIDC** y **usuarios locales** en paralelo, según el patrón Token Exchange documentado en `CONSTITUTION-ba.md` §8.1.1 y §8.1.1.1.
 
-> **Nota sobre clasificación de datos (Always Encrypted):** columnas de este esquema marcadas con `[DataClassification(Level ≥ 3)]` — pendiente matriz ANH (ver `CONSTITUTION-ba.md` §7.10) — se marcarán con **Always Encrypted** de SQL Server 2022 en migración posterior a la publicación formal de la matriz. Candidatas probables: `ProfessionalLicense.LicenseNumber`, `User.PhoneNumber`, columnas de documento de identidad.
+> **Nota sobre clasificación de datos (Always Encrypted):** columnas de este esquema marcadas con `[DataClassification(Level ≥ 3)]` — pendiente matriz ANH (ver `CONSTITUTION-ba.md` §8.10) — se marcarán con **Always Encrypted** de SQL Server 2022 en migración posterior a la publicación formal de la matriz. Candidatas probables: `ProfessionalLicense.LicenseNumber`, `User.PhoneNumber`, columnas de documento de identidad.
 
 ### 9.0 Integración con ASP.NET Core Identity
 
-El esquema `identity` se materializa sobre **ASP.NET Core Identity** (ver `CONSTITUTION-ba.md` §4 y §5.2). Las entidades de dominio GOP **extienden** las entidades base de Identity en lugar de duplicarlas. Esto aporta nativamente todos los controles de autenticación exigidos por §12.6 de CONSTITUTION (password hashing PBKDF2, lockout, MFA, tokens de recuperación, email confirmation) sin código adicional.
+El esquema `identity` se materializa sobre **ASP.NET Core Identity** (ver `CONSTITUTION-ba.md` §5 y §6.2). Las entidades de dominio GOP **extienden** las entidades base de Identity en lugar de duplicarlas. Esto aporta nativamente todos los controles de autenticación exigidos por §13.6 de CONSTITUTION (password hashing PBKDF2, lockout, MFA, tokens de recuperación, email confirmation) sin código adicional.
 
 **Herencia y mapeo:**
 
@@ -438,11 +443,11 @@ El esquema `identity` se materializa sobre **ASP.NET Core Identity** (ver `CONST
 
 `PasswordHash`, `SecurityStamp`, `ConcurrencyStamp`, `Email`, `NormalizedEmail`, `EmailConfirmed`, `UserName`, `NormalizedUserName`, `PhoneNumber`, `PhoneNumberConfirmed`, `TwoFactorEnabled`, `LockoutEnd`, `LockoutEnabled`, `AccessFailedCount`.
 
-Estas columnas cubren íntegramente los requisitos de §12.6 de CONSTITUTION. **No** se redeclaran en §9.1.
+Estas columnas cubren íntegramente los requisitos de §13.6 de CONSTITUTION. **No** se redeclaran en §9.1.
 
 **Federación OIDC vía `AspNetUserLogins`:**
 
-Cuando un usuario se autentica vía el IdP externo (ver CONSTITUTION §7.1.1, §19.8.1), `gop.identity`:
+Cuando un usuario se autentica vía el IdP externo (ver CONSTITUTION §8.1.1, §20.8.1), `gop-identity`:
 
 1. Recibe el `id_token` con un claim `sub` = identificador del usuario en el IdP externo.
 2. Consulta `AspNetUserLogins` buscando la fila `(LoginProvider = 'AzureAd' | 'Adfs' | 'Keycloak' | ..., ProviderKey = <sub del IdP>)`.
@@ -460,12 +465,12 @@ Extiende `IdentityUser<long>`. Columnas adicionales de dominio GOP:
 | `FullName` | `nvarchar(200)` | No | Nombre visible del usuario |
 | `OperatorId` | `bigint` FK → `Operator` | Sí | Tenant propio (NULL para usuarios ANH) |
 | `FunctionaryId` | `bigint` FK → `Functionary` | Sí | Funcionario ANH asociado (NULL para usuarios operadora) |
-| `AuthenticationSource` | `tinyint` (enum: `External=1`, `Local=2`) | No | Origen de autenticación — `External` si se autentica vía IdP federado, `Local` si usa credenciales propias de ASP.NET Core Identity. Ver `CONSTITUTION-ba.md` §7.1.1.1 |
+| `AuthenticationSource` | `tinyint` (enum: `External=1`, `Local=2`) | No | Origen de autenticación — `External` si se autentica vía IdP federado, `Local` si usa credenciales propias de ASP.NET Core Identity. Ver `CONSTITUTION-ba.md` §8.1.1.1 |
 | `Status` | `tinyint` (enum: `Active`, `Inactive`, `Suspended`) | No | Estado de dominio (ortogonal al lockout de Identity) |
 
 **Eliminado respecto a v0.4:**
 - `AuthType (Local / Sso / Ldap)` → reemplazado por `AuthenticationSource (External | Local)`; el IdP específico ya se modela en `AspNetUserLogins.LoginProvider`.
-- `IsSuperuser` → eliminado. Los privilegios elevados se modelan exclusivamente por rol (`ANH_Admin` con capabilities). Ver `CONSTITUTION-ba.md` §7.4 — `UserRole` es la fuente única de alcance.
+- `IsSuperuser` → eliminado. Los privilegios elevados se modelan exclusivamente por rol (`ANH_Admin` con capabilities). Ver `CONSTITUTION-ba.md` §8.4 — `UserRole` es la fuente única de alcance.
 - `Login`, `Email` → ya provistos por `IdentityUser<long>` (`UserName`, `Email`), no se redeclaran.
 
 ### 9.2 `ProfessionalLicense`
@@ -476,7 +481,7 @@ Extiende `IdentityUser<long>`. Columnas adicionales de dominio GOP:
 
 ### 9.4 `UserRole` — fuente única de alcance
 
-Entidad N:M extendida. Es la **única** fuente de verdad del alcance de datos del usuario (junto con `User.OperatorId`). Ver `CONSTITUTION-ba.md` §7.4 para las reglas vinculantes.
+Entidad N:M extendida. Es la **única** fuente de verdad del alcance de datos del usuario (junto con `User.OperatorId`). Ver `CONSTITUTION-ba.md` §8.4 para las reglas vinculantes.
 
 **Atributos:**
 
@@ -494,7 +499,7 @@ Entidad N:M extendida. Es la **única** fuente de verdad del alcance de datos de
 | `AssignedAt` | `datetime2(7)` | No | Cuándo. |
 | `Reason` | `nvarchar(500)` | Sí | Justificación de la asignación. |
 
-**Reglas de interpretación (7 escenarios)** — espejo de `CONSTITUTION-ba.md` §7.4.1:
+**Reglas de interpretación (7 escenarios)** — espejo de `CONSTITUTION-ba.md` §8.4.1:
 
 | Tipo rol | `ContractId` | `OperatorId` | `FieldId` | Alcance resultante |
 |---|---|---|---|---|
@@ -517,14 +522,14 @@ Entidad N:M extendida. Es la **única** fuente de verdad del alcance de datos de
 - `IX_UserRole_OperatorId` (filtrado `WHERE OperatorId IS NOT NULL`).
 - `IX_UserRole_FieldId` (filtrado `WHERE FieldId IS NOT NULL`).
 
-**Alcance efectivo** del usuario = unión de todas las filas `UserRole` vigentes. La resolución a lista concreta de contratos se ejecuta en `gop.identity` al emitir el JWT (ver `CONSTITUTION-ba.md` §7.4.2).
+**Alcance efectivo** del usuario = unión de todas las filas `UserRole` vigentes. La resolución a lista concreta de contratos se ejecuta en `gop-identity` al emitir el JWT (ver `CONSTITUTION-ba.md` §8.4.2).
 
 ### 9.5 `Permission` / `RolePermission`
-Permisos granulares por módulo y acción (capabilities). Ver `CONSTITUTION-ba.md` §19.1 para lista inicial.
+Permisos granulares por módulo y acción (capabilities). Ver `CONSTITUTION-ba.md` §20.1 para lista inicial.
 
 ### 9.6 `RefreshToken`
 
-Modela los refresh tokens emitidos por `gop.identity` con **rotación obligatoria** y **detección de reuso** (ver `CONSTITUTION-ba.md` §7.1 y §12.6). Reemplaza `UserSession` de v0.4 (esa entidad se elimina; su información de última actividad se deriva del `RefreshToken` más reciente del usuario).
+Modela los refresh tokens emitidos por `gop-identity` con **rotación obligatoria** y **detección de reuso** (ver `CONSTITUTION-ba.md` §8.1 y §13.6). Reemplaza `UserSession` de v0.4 (esa entidad se elimina; su información de última actividad se deriva del `RefreshToken` más reciente del usuario).
 
 | Columna | Tipo | Null | Descripción |
 |---|---|---|---|
@@ -533,7 +538,7 @@ Modela los refresh tokens emitidos por `gop.identity` con **rotación obligatori
 | `FamilyId` | `uniqueidentifier` | No | Identifica la **cadena de rotación**. Todos los refresh tokens derivados de un mismo login inicial comparten `FamilyId`. Si se detecta reuso de un token ya rotado, **toda la familia** se revoca (defensa contra robo de token). |
 | `TokenHash` | `varbinary(64)` | No | Hash SHA-512 del refresh token. **Nunca** se almacena el token en claro. |
 | `IssuedAt` | `datetime2(7)` | No | — |
-| `ExpiresAt` | `datetime2(7)` | No | Típico: `IssuedAt + 8h` (alineado con absolute timeout de §12.6). |
+| `ExpiresAt` | `datetime2(7)` | No | Típico: `IssuedAt + 8h` (alineado con absolute timeout de §13.6). |
 | `ReplacedByTokenId` | `bigint` FK → `RefreshToken` | Sí | Apunta al siguiente token de la cadena tras rotación. NULL = es el token vigente de la familia (o la familia está revocada). |
 | `RevokedAt` | `datetime2(7)` | Sí | Marca de revocación. |
 | `RevocationReason` | `nvarchar(50)` | Sí | `Rotated`, `Logout`, `Reuse`, `AdminRevoked`, `FamilyCompromised`, `PasswordChanged`. |
@@ -554,7 +559,7 @@ Modela los refresh tokens emitidos por `gop.identity` con **rotación obligatori
 
 ### 9.7 `RevokedAccessToken`
 
-Revocation list para JWT de acceso, conforme `CONSTITUTION-ba.md` §7.9. Permite invalidación inmediata de un access token antes de su expiración natural (casos: logout forzado, compromiso de cuenta, cambio de password).
+Revocation list para JWT de acceso, conforme `CONSTITUTION-ba.md` §8.9. Permite invalidación inmediata de un access token antes de su expiración natural (casos: logout forzado, compromiso de cuenta, cambio de password).
 
 | Columna | Tipo | Null | Descripción |
 |---|---|---|---|
@@ -568,7 +573,7 @@ Revocation list para JWT de acceso, conforme `CONSTITUTION-ba.md` §7.9. Permite
 - `IX_RevokedAccessToken_UserId` — revocación masiva por usuario.
 - `IX_RevokedAccessToken_ExpiresAt` — job de purga (borra filas con `ExpiresAt < now`).
 
-**Consulta por servicios:** el cliente `IIdentityServiceClient` de `Anh.Gop.Shared.Auth` consulta esta tabla **sólo** en operaciones críticas (firmas, aprobaciones — ver CONSTITUTION §7.9). La consulta por cada request invalidaría el diseño stateless del JWT.
+**Consulta por servicios:** el cliente `IIdentityServiceClient` de `Anh.Gop.Shared.Auth` consulta esta tabla **sólo** en operaciones críticas (firmas, aprobaciones — ver CONSTITUTION §8.9). La consulta por cada request invalidaría el diseño stateless del JWT.
 
 ---
 
@@ -578,18 +583,18 @@ Revocation list para JWT de acceso, conforme `CONSTITUTION-ba.md` §7.9. Permite
 
 Atributos: `AuditLogId`, `EventType`, `AggregateType`, `AggregateId`, `UserId`, `TenantId`, `IpAddress`, `OccurredAt`, `PreviousValueJson`, `NewValueJson`, `AdditionalContextJson`, `CorrelationId`.
 
-**Append-only.** Escritura **exclusivamente vía Audit.NET + `Audit.EntityFramework.Core`** sobre cada `DbContext` de servicio (ver `CONSTITUTION-ba.md` §11.6). **PROHIBIDO** inserción manual desde código de dominio. Particionable por `OccurredAt` para retención y performance.
+**Append-only.** Escritura **exclusivamente vía Audit.NET + `Audit.EntityFramework.Core`** sobre cada `DbContext` de servicio (ver `CONSTITUTION-ba.md` §12.6). **PROHIBIDO** inserción manual desde código de dominio. Particionable por `OccurredAt` para retención y performance.
 
-> **Tabla única con discriminador:** `AuditLog` es la **única** tabla de auditoría. No existen `DataAccessLog` ni `ExportLog` separadas — son **valores especializados de `EventType`** con su detalle en `AdditionalContextJson`. Ver `CONSTITUTION-ba.md` §7.10.
+> **Tabla única con discriminador:** `AuditLog` es la **única** tabla de auditoría. No existen `DataAccessLog` ni `ExportLog` separadas — son **valores especializados de `EventType`** con su detalle en `AdditionalContextJson`. Ver `CONSTITUTION-ba.md` §8.10.
 
 **Catálogo oficial de `EventType`:**
 
 | Categoría | Valores | Uso |
 |---|---|---|
-| Autenticación | `Login`, `LoginFailed`, `Logout`, `TokenIssued`, `TokenRefreshed`, `TokenRevoked`, `MfaChallenge`, `MfaFailed`, `PasswordChanged`, `PasswordResetRequested`, `AccountLocked`, `AccountUnlocked` | Todos los eventos del pipeline de autenticación — emitidos por `gop.identity` |
+| Autenticación | `Login`, `LoginFailed`, `Logout`, `TokenIssued`, `TokenRefreshed`, `TokenRevoked`, `MfaChallenge`, `MfaFailed`, `PasswordChanged`, `PasswordResetRequested`, `AccountLocked`, `AccountUnlocked` | Todos los eventos del pipeline de autenticación — emitidos por `gop-identity` |
 | Autorización | `AccessDenied`, `RoleAssigned`, `RoleRevoked`, `PermissionChanged` | Decisiones de autorización denegadas; cambios de rol/permiso en `UserRole` / `RolePermission` |
 | Dominio | `Create`, `Update`, `Delete`, `StateTransition`, `Approve`, `Reject`, `Sign`, `Submit` | Cambios en entidades de dominio. Audit.NET los emite automáticamente por cambios detectados en el `DbContext` |
-| Datos sensibles | `DataAccess`, `Export` | Acceso a entidades `[DataClassification(Level ≥ 2)]` y exportaciones masivas (ver CONSTITUTION §7.10) |
+| Datos sensibles | `DataAccess`, `Export` | Acceso a entidades `[DataClassification(Level ≥ 2)]` y exportaciones masivas (ver CONSTITUTION §8.10) |
 | Administración | `UserCreated`, `UserDeactivated`, `UserReactivated`, `TenantCreated` | Operaciones administrativas |
 | Integración | `IntegrationCallSucceeded`, `IntegrationCallFailed` | Complemento a `IntegrationLog` (§10.2) para eventos de alto nivel |
 
@@ -664,7 +669,7 @@ Copias locales de polígonos Mapa de Tierras (contratos, departamentos, municipi
 
 ### 12.1 Topología de permisos de base de datos en V1
 
-Alineado con `CONSTITUTION-ba.md` §11.6.6. En V1 los microservicios **comparten instancia física** de SQL Server 2022 pero cada uno opera sobre su **esquema dedicado**. El aislamiento es **lógico**, impuesto por permisos de BD.
+Alineado con `CONSTITUTION-ba.md` §12.6.6. En V1 los microservicios **comparten instancia física** de SQL Server 2022 pero cada uno opera sobre su **esquema dedicado**. El aislamiento es **lógico**, impuesto por permisos de BD.
 
 **Principio:** cada microservicio tiene un **login SQL propio**. Los permisos se otorgan al nivel más estrecho posible para preservar los límites de bounded context aún cuando la instancia sea compartida.
 
@@ -672,21 +677,21 @@ Alineado con `CONSTITUTION-ba.md` §11.6.6. En V1 los microservicios **comparten
 
 | Microservicio | Esquema propio (`GRANT` completo: SELECT/INSERT/UPDATE/DELETE/EXECUTE) | Escritura a auditoría | Lectura cross-schema | Observación |
 |---|---|---|---|---|
-| `gop.core` | `core` | `INSERT` en `audit.AuditLog`, `audit.IntegrationLog` | — | Dueño de entidades transversales |
-| `gop.operations` | `ops` | `INSERT` en `audit.AuditLog`, `audit.IntegrationLog` | `SELECT` sobre `core`, `catalog` | Consume referencias |
-| `gop.production` | `prod` | `INSERT` en `audit.AuditLog`, `audit.IntegrationLog` | `SELECT` sobre `core`, `catalog` | Consume referencias |
-| `gop.procedures` | `procedure` | `INSERT` en `audit.AuditLog`, `audit.IntegrationLog` | `SELECT` sobre `core`, `catalog`, `ops`, `prod` (lecturas de contexto) | Orquesta trámites |
-| `gop.workflow` | `workflow` | `INSERT` en `audit.AuditLog`, `audit.IntegrationLog` | — | Motor genérico, no conoce dominios |
-| `gop.identity` | `identity` | `INSERT` en `audit.AuditLog` | — | Emisor de tokens y dueño del `User` |
-| `gop.audit` | — (sin esquema propio de negocio) | — (no escribe — es consumidor) | `SELECT` sobre `audit.*` | Rol de consulta/exportación |
-| `gop.integration` | `integration` | `INSERT` en `audit.AuditLog`, `audit.IntegrationLog` | `SELECT` sobre esquemas destino según cada homologación | Staging y sincronización |
+| `gop-core` | `core` | `INSERT` en `audit.AuditLog`, `audit.IntegrationLog` | — | Dueño de entidades transversales |
+| `gop-operations` | `ops` | `INSERT` en `audit.AuditLog`, `audit.IntegrationLog` | `SELECT` sobre `core`, `catalog` | Consume referencias |
+| `gop-production` | `prod` | `INSERT` en `audit.AuditLog`, `audit.IntegrationLog` | `SELECT` sobre `core`, `catalog` | Consume referencias |
+| `gop-procedures` | `procedure` | `INSERT` en `audit.AuditLog`, `audit.IntegrationLog` | `SELECT` sobre `core`, `catalog`, `ops`, `prod` (lecturas de contexto) | Orquesta trámites |
+| `gop-workflow` | `workflow` | `INSERT` en `audit.AuditLog`, `audit.IntegrationLog` | — | Motor genérico, no conoce dominios |
+| `gop-identity` | `identity` | `INSERT` en `audit.AuditLog` | — | Emisor de tokens y dueño del `User` |
+| `gop-audit` | — (sin esquema propio de negocio) | — (no escribe — es consumidor) | `SELECT` sobre `audit.*` | Rol de consulta/exportación |
+| `gop-integration` | `integration` | `INSERT` en `audit.AuditLog`, `audit.IntegrationLog` | `SELECT` sobre esquemas destino según cada homologación | Staging y sincronización |
 
 **Reglas vinculantes:**
 
 1. **Ningún microservicio tiene `SELECT` sobre el esquema de otro** excepto lo explícitamente declarado arriba (y documentado vía ADR si se amplía).
-2. **Ningún microservicio (excepto `gop.audit`) tiene `SELECT` sobre `audit.*`** — la auditoría es write-only para los escritores.
-3. **`gop.audit` no tiene permiso de escritura** sobre `audit.*` — es lector puro. Las migraciones DbUp del esquema `audit` las corre un login administrativo distinto durante el deployment.
-4. **Ningún microservicio tiene `CONTROL` o `ALTER`** sobre su esquema en runtime. Las migraciones corren con un login administrativo separado y se ejecutan sólo durante deployments controlados (ver §11.3 de CONSTITUTION).
+2. **Ningún microservicio (excepto `gop-audit`) tiene `SELECT` sobre `audit.*`** — la auditoría es write-only para los escritores.
+3. **`gop-audit` no tiene permiso de escritura** sobre `audit.*` — es lector puro. Las migraciones DbUp del esquema `audit` las corre un login administrativo distinto durante el deployment.
+4. **Ningún microservicio tiene `CONTROL` o `ALTER`** sobre su esquema en runtime. Las migraciones corren con un login administrativo separado y se ejecutan sólo durante deployments controlados (ver §12.3 de CONSTITUTION).
 
 **Evolución V2+:** el ADR correspondiente evaluará separación física (instancia o BD por microservicio) según volumen, requisitos de compliance y operación. La matriz lógica de permisos se preserva en ese escenario — sólo cambia el aislamiento físico.
 
