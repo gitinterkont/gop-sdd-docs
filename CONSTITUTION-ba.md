@@ -1,8 +1,8 @@
 # CONSTITUTION-ba.md
 ## Constitución Arquitectónica y Técnica del Backend — GOP 360°
 
-**Versión:** 1.11
-**Fecha:** Abril 2026
+**Versión:** 1.12
+**Fecha:** Junio 2026
 **Estado:** Vigente para V1
 **Autor responsable:** Arquitectura de Software — Modernización GOP
 **Aprobación:** Pendiente — OTI / Dirección de Fiscalización ANH
@@ -223,11 +223,15 @@ Toda dependencia NuGet **MUST** tener licencia compatible con uso en software de
 
 ### 6.1 Patrón arquitectónico
 
-El backend **MUST** seguir **Clean Architecture** con **CQRS** explícito, conforme a la sección 2.3 del *Documento de Estándares de Codificación*. Los bounded contexts se organizan como **microservicios independientes**, alineados con los esquemas del modelo de datos.
+El backend **MUST** seguir **Clean Architecture** con **CQRS** explícito, conforme a la sección 2.3 del *Documento de Estándares de Codificación*. El sistema se organiza en **bounded contexts** alineados con los esquemas del modelo de datos.
+
+**Topología de despliegue — monolito modular primero (V1):** los bounded contexts **MUST** mantener fronteras estrictas (módulos independientes, sin dependencias cruzadas que violen el mapa del modelo de datos), pero **MAY** desplegarse como un **monolito modular** (un solo proceso/repositorio) en V1, donde cada módulo equivale a un microservicio futuro. La extracción a microservicios independientes (§6.2) es el **objetivo arquitectónico**, no un prerrequisito de V1.
+
+**Rationale (mejor práctica):** descomponer en microservicios antes de tener señal real de escala/equipo/dominio produce un *monolito distribuido* — los costos (latencia de red, fallos en cascada, transacciones distribuidas, complejidad operativa) llegan sin los beneficios. La práctica establecida (*MonolithFirst*, M. Fowler; *"don't start with microservices"*, S. Newman) recomienda empezar con un monolito bien modularizado y extraer servicios cuando un límite lo justifique. Las fronteras de módulo de §6.3 garantizan que la extracción sea **mecánica**. Adoptar el monolito modular como topología de V1 **MUST** documentarse en un ADR (ver §0.1).
 
 ### 6.2 Microservicios planeados para V1
 
-El sistema V1 se despliega como los siguientes servicios independientes, cada uno con su propio repositorio y ciclo de release:
+El sistema define los siguientes **bounded contexts**. Son el **objetivo** de descomposición a microservicios independientes (repositorio y ciclo de release propios). En V1, conforme a §6.1, **MAY** desplegarse como **módulos de un monolito modular** — un módulo por bounded context, con las mismas fronteras y reglas de dependencia. Cada fila de la tabla es un microservicio objetivo y, en monolito modular, un módulo:
 
 | Servicio | Responsabilidad | Esquemas BD principales |
 |---|---|---|
@@ -266,6 +270,30 @@ Dependencias entre proyectos (regla inviolable):
 - `Domain` → (nada — capa más interna)
 
 **PROHIBIDO** que `Domain` dependa de `Application` o `Infrastructure`. **PROHIBIDO** que `Application` dependa de `Infrastructure` (usa interfaces).
+
+#### 6.3.1 Equivalencia en monolito modular
+
+Cuando el sistema se despliega como **monolito modular** (§6.1), la misma estructura se ubica por módulo dentro de un único repositorio/solución:
+
+```
+/src/Modules/{Module}/
+ /Anh.Gop.{Module}.Api
+ /Anh.Gop.{Module}.Application
+ /Anh.Gop.{Module}.Domain
+ /Anh.Gop.{Module}.Infrastructure
+ /Anh.Gop.{Module}.Tests.Unit
+ /Anh.Gop.{Module}.Tests.Integration
+ /Anh.Gop.{Module}.Tests.Architecture     ← ver §15.6
+/src/Host/                                  ← único punto de entrada que compone los módulos
+/src/Shared/                                ← shared libs (§6.4) como project references en V1
+```
+
+**MUST en monolito modular:**
+- Las reglas de dependencia entre capas (arriba) y entre módulos son **idénticas** a las de microservicios: ningún módulo referencia el `Domain`/`Infrastructure`/`Persistence` de otro módulo. La comunicación entre módulos se hace por contratos en `Shared.Contracts` o interfaces publicadas, **no** por acceso directo a entidades/DbContext ajenos.
+- Cada módulo posee su propio `DbContext` y su propio conjunto de esquemas BD; **PROHIBIDO** que un módulo lea/escriba tablas de otro (equivalente monolítico de la línea roja §19.1 "un servicio no escribe en la BD de otro").
+- El `Host` es el único ensamblado que conoce todos los módulos (composition root). Ningún módulo depende de otro a través del `Host`.
+
+Esta equivalencia garantiza que extraer un módulo a microservicio sea **mecánico**: mover su carpeta a un repo propio y reemplazar las llamadas in-process por HTTP/eventos.
 
 ### 6.4 Shared Libraries
 
@@ -1384,9 +1412,14 @@ public interface IWellRepository
 }
 ```
 
+**MUST:** los repositorios son **por agregado** (`IWellRepository`, `IForma101Repository`), con métodos que expresan operaciones de dominio. **PROHIBIDO** un repositorio genérico `IRepository<T>` / `Repository<T>` que exponga CRUD indiscriminado.
+
+> **Rationale.** `DbContext` de EF Core ya implementa Repository + Unit of Work. Una capa de repos **genérica** encima es abstracción redundante (guía de Microsoft; J. Bogard). El repositorio por agregado sí aporta: protege la frontera del agregado, encapsula queries de dominio y mantiene `Application` desacoplada de EF. Si un caso solo necesita lectura proyectada, usar una query dedicada (§11.1, proyección EF/Dapper) en lugar de inflar el repositorio.
+
 **PROHIBIDO:**
 - `DbContext` inyectado en controllers o handlers directamente.
 - Queries arbitrarias via LINQ en handlers — **MUST** estar encapsuladas en el repositorio o en queries dedicadas (Dapper/EF proyection).
+- Repositorio genérico `IRepository<T>` como patrón base de los agregados.
 
 ### 11.4 Unit of Work
 
@@ -1717,13 +1750,20 @@ Cada script se nombra con prefijo numérico secuencial y descripción breve en i
 
 #### Orden de ejecución en deploy
 
+Las migraciones (ambos pasos) se ejecutan como un **paso explícito del pipeline de deploy**, antes de poner en servicio la nueva versión:
+
 1. EF Core Migrations (`__EFMigrationsHistory`) — schema primero.
 2. DbUp scripts (`SchemaVersions`) — objetos que dependen del schema.
+
+**MUST:** la migración corre en el deploy (job/paso dedicado: `dotnet ef database update` o el migrador DbUp), **no** en el arranque de la aplicación.
 
 **PROHIBIDO:**
 - Editar una migración EF o un script DbUp ya aplicado en cualquier ambiente.
 - Ejecutar SQL manual en ambientes superiores a desarrollo local.
 - Deploys que omitan correr cualquiera de los dos pasos.
+- **`Database.Migrate()` / `MigrateAsync()` en el arranque de la app en ambientes productivos.** En despliegues multi-instancia provoca *race conditions* (varias instancias migrando a la vez) y elimina el gate de revisión del deploy. En desarrollo local **MAY** usarse por conveniencia, protegido por entorno (p. ej. solo `Development`).
+
+> **Rationale (mejor práctica).** Acoplar la migración al startup mezcla el ciclo de vida del esquema con el del proceso. Separarla en un paso de deploy da control transaccional, revisión y rollback explícitos, y evita corridas concurrentes en escenarios horizontales.
 
 ### 12.4 Transacciones
 
@@ -2229,14 +2269,16 @@ Las reglas de esta sección verifican las **líneas rojas de §19.1**. Cualquier
 ### 17.1 Principios
 
 **MUST:**
-- Cada servicio es dueño exclusivo de sus datos (escritura).
+- Cada servicio (o módulo, en monolito modular) es dueño exclusivo de sus datos (escritura).
 - Comunicación entre servicios **MUST** ser asíncrona cuando sea posible (V2+ con event bus).
 - Para V1 sin event bus, comunicación síncrona HTTP **MAY** usarse pero **SHOULD** minimizarse.
 
+**Monolito modular (V1) — comunicación in-process:** cuando el sistema corre como monolito modular (§6.1), la comunicación entre bounded contexts se hace por **llamadas in-process** a interfaces publicadas en `Shared.Contracts` (o puertos expuestos por el módulo dueño), **no** por HTTP. Esto es lo **preferido** en V1: elimina la latencia de red, los fallos parciales y la complejidad de las transacciones distribuidas — precisamente el *monolito distribuido* que se busca evitar. Al extraer un módulo a microservicio, esas llamadas in-process se reemplazan por HTTP/eventos detrás de la misma interfaz.
+
 **PROHIBIDO:**
-- Un servicio escribir en la BD de otro servicio.
+- Un servicio (o módulo) escribir en la BD/esquema de otro.
 - Llamadas HTTP síncronas entre servicios para operaciones de autorización rutinaria.
-- Replicación de lógica de negocio entre servicios.
+- Replicación de lógica de negocio entre servicios (o módulos).
 
 ### 17.2 Referencia de datos compartidos
 
@@ -3408,6 +3450,21 @@ El diagnóstico interno identificó que la ratio MUST/PROHIBIDO vs SHOULD/MAY (�
   - §11.8.9 Alineación Clean/hexagonal: archivos como recursos, motor en Infrastructure (`Anh.Gop.Shared.RulesEngine`), dominio consume vía puerto `IRulesProvider`.
   - §11.8.10 Cuándo NO aplicar (invariantes de dominio, norma legal estable, caso único, complejidad que requeriría mini-lenguaje).
   - §11.8.11 Líneas rojas: NUNCA motor Turing-completo, NUNCA cargar sin validar schema, NUNCA duplicar lógica back/front, NUNCA leer archivos desde Domain/handlers.
+
+---
+
+## Control de cambios v1.11 → v1.12
+
+**Topología evolutiva (monolito modular primero) y correcciones de mejor práctica:**
+
+- **§6.1 — Topología de despliegue.** Se reconoce el **monolito modular** como topología válida de V1: los bounded contexts mantienen fronteras estrictas pero **MAY** desplegarse en un solo proceso/repo, con cada módulo = microservicio futuro. La descomposición a microservicios pasa a ser **objetivo**, no prerrequisito. Rationale con *MonolithFirst* (Fowler) / *"don't start with microservices"* (Newman); evita el *monolito distribuido*. Adoptarlo requiere ADR.
+- **§6.2 — Intro reformulada.** La tabla de servicios se describe como **bounded contexts objetivo**; en monolito modular cada fila es un módulo.
+- **§6.3.1 — Nueva subsección "Equivalencia en monolito modular".** Estructura `/src/Modules/{Module}/` con las mismas capas + `Tests.Unit/Integration/Architecture` por módulo + `Host` como composition root. Reglas de aislamiento entre módulos (DbContext/esquema propio, sin acceso cruzado), espejo de las líneas rojas inter-servicio.
+- **§11.3 — Repository Pattern.** Se explicita **MUST repos por agregado** y **PROHIBIDO repositorio genérico `IRepository<T>`** (evita la abstracción redundante sobre EF, que ya es Repository + UoW).
+- **§12.3 — Migraciones.** Se añade **MUST: migrar en el paso de deploy, no en el arranque de la app**; **PROHIBIDO `MigrateAsync()` en startup en producción** (race conditions multi-instancia, sin gate de revisión).
+- **§17.1 — Comunicación inter-contexto.** En monolito modular, comunicación **in-process** vía `Shared.Contracts`/puertos (no HTTP) como opción preferida en V1; al extraer un módulo, se reemplaza por HTTP/eventos detrás de la misma interfaz.
+
+> Estos cambios son **aditivos y compatibles hacia atrás** (los microservicios siguen siendo topología válida y objetivo). Versión **Minor** 1.11 → 1.12.
 
 ---
 
